@@ -1,137 +1,105 @@
 <?php
 
 require_once("plugins/actions/config.php");
+require_once("plugins/actions/functions.php");  
+
 session_start();
 
-if(isset($_SESSION['user_id'])){
+if (isset($_SESSION['user_id'])) {
 
-if (isset($_POST['submit'])) {
-    // Assign form inputs to variables or default to NULL
-    $task_name = !empty($_POST['name']) ? $_POST['name'] : null;
-    $task_description = !empty($_POST['description']) ? $_POST['description'] : null;
-    $task_deadline = !empty($_POST['deadline']) ? $_POST['deadline'] : null;
-    $task_duration = !empty($_POST['duration']) ? $_POST['duration'] : null;
-    $task_assigner = !empty($_POST['assigner']) ? $_POST['assigner'] : null;
+    $user_id = $_SESSION['user_id'];
+    $user_data = getUserData($user_id, $conn);
 
-    // Handle file upload for task
-    if (isset($_FILES['file']['name']) && !empty($_FILES['file']['name'])) {
-        $file_name = $_FILES['file']['name'];
-        $tmp_name = $_FILES['file']['tmp_name'];
-        $error = $_FILES['file']['error'];
+    // Extract user data values
+    $username = $user_data['username'];
+    $profile_pic = $user_data['profile_pic'];
+    // Get data
+    $only_income = getTransactionSum($user_id, 'income', $conn);
+    $positive_cashflow = getCashflow($user_id, 'asset', $conn);
+    $negative_cashflow = getCashflow($user_id, 'liability', $conn);
 
-        if ($error === 0) {
-            $file_ex = pathinfo($file_name, PATHINFO_EXTENSION);
-            $file_ex_to_lc = strtolower($file_ex);
+    // Fetch total expense and total for selected categories
+    $only_expense = getTransactionSum($user_id, 'expense', $conn);
+    $total_expense = $only_expense + $positive_cashflow + $negative_cashflow;
 
-            // Allowed file extensions (adjust as needed)
-            $allowed_exs = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
-            if (in_array($file_ex_to_lc, $allowed_exs)) {
-                $new_file_name = uniqid('', true) . '.' . $file_ex_to_lc;
-                $file_upload_path = '../uploads/tasks/file' . $new_file_name;
+    // Calculate total values
+    $passive_income = $positive_cashflow - $negative_cashflow;
+    $total_income = $passive_income + $only_income;
 
-                // Move the uploaded file to the specified directory
-                move_uploaded_file($tmp_name, $file_upload_path);
+    $cash = $user_data['balance'];
+    // Calculate balance
+    $balance = $total_income - $total_expense;
+    updateUserBalance($user_id, $balance, $conn);
 
-                // Prepare the SQL query with placeholders
-                $query = "INSERT INTO tasks (task_name, deadline, task_duration, task_description, task_status, task_assigner, task_resource_filename) 
-                          VALUES (?, ?, ?, ?, 'PENDING', ?, ?)";
+    // Handle Task Form Submission
+    if (isset($_POST['submit'])) {
+        $task_name = $_POST['name'] ?? null;
+        $task_description = $_POST['description'] ?? null;
+        $task_deadline = $_POST['deadline'] ?? null;
+        $task_duration = $_POST['duration'] ?? null;
+        $task_assigner = $_POST['assigner'] ?? null;
 
-                // Prepare the statement using the MySQLi connection
-                $stmt = $conn->prepare($query);
-
-                // Bind parameters
-                $stmt->bind_param("ssssis", $task_name, $task_deadline, $task_duration, $task_description, $task_assigner, $new_file_name);
-
-                // Execute the statement and check if it was successful
-                if ($stmt->execute()) {
-                    echo "New task created successfully!";
-                } else {
-                    echo "Error: " . $stmt->error;
-                }
-
-                // Redirect to the same page to prevent form resubmission on refresh
-                header("Location: " . $_SERVER['PHP_SELF']);
-                exit();
-            } else {
-                $em = "You can't upload files of this type";
-                header("Location: " . $_SERVER['PHP_SELF'] . "?error=$em");
-                exit();
-            }
-        } else {
-            $em = "Unknown error occurred!";
-            header("Location: " . $_SERVER['PHP_SELF'] . "?error=$em");
-            exit();
-        }
-    } else {
-        // Insert the task without a file if no file is uploaded
-        $query = "INSERT INTO tasks (task_name, deadline, task_duration, task_description, task_status, task_assigner) 
-                  VALUES (?, ?, ?, ?, 'PENDING', ?)";
-
-        // Prepare the statement using the MySQLi connection
-        $stmt = $conn->prepare($query);
-
-        // Bind parameters (without file)
-        $stmt->bind_param("ssssi", $task_name, $task_deadline, $task_duration, $task_description, $task_assigner);
-
-        // Execute the statement and check if it was successful
-        if ($stmt->execute()) {
+        try {
+            addTask($task_name, $task_deadline, $task_duration, $task_description, $task_assigner, $user_id, $_FILES['file'] ?? null, $conn);
             echo "New task created successfully!";
-        } else {
-            echo "Error: " . $stmt->error;
+        } catch (Exception $e) {
+            echo "Error: " . $e->getMessage();
         }
 
-        // Redirect to the same page to prevent form resubmission on refresh
+        // Redirect to avoid form resubmission
         header("Location: " . $_SERVER['PHP_SELF']);
         exit();
     }
+
+
+    
+if (isset($_POST['upload_tasks']) && isset($_FILES['task_file'])) {
+  $user_id = $_SESSION['user_id']; // Assuming user ID is stored in session
+  $task_file = $_FILES['task_file'];
+
+  // Call the function to handle the CSV import
+  $result_message = importTasksFromCSV($conn, $task_file, $user_id);
+
+  // Redirect with appropriate message
+  $location = $_SERVER['PHP_SELF'] . '?' . (strpos($result_message, 'successfully') !== false ? "success" : "error") . "=" . urlencode($result_message);
+  header("Location: $location");
+  exit();
+} else {
+  echo "No file was uploaded.";
 }
 
-$user_id = $_SESSION['user_id'];
 
+if (isset($_POST['upload_timetable']) && isset($_FILES['timetable_file'])) {
+  $user_id = $_SESSION['user_id']; // Assuming user ID is stored in session
+  $timetable_file = $_FILES['timetable_file'];
 
-// for  user 
-$query = "SELECT * FROM users WHERE id = $user_id";
+  // Call the function to handle the CSV import
+  $result_message = importTimetableFromCSV($conn, $timetable_file, $user_id);
 
-$results = $conn->query($query);
-
-if ($results -> num_rows > 0){
-    while($row = $results->fetch_assoc()){
-        $username = $row['username'];
-        $profile_pic = $row['profile_pic'];
-    }
+  // Redirect with the appropriate message
+  $location = $_SERVER['PHP_SELF'] . '?' . (strpos($result_message, 'successfully') !== false ? "success" : "error") . "=" . urlencode($result_message);
+  header("Location: $location");
+  exit();
+} else {
+  echo "No file was uploaded.";
 }
+    // Get My Day Tasks and Counts
+    $resultsmyday_tasks = getTasksByStatusAndDate($user_id, 'PENDING',$conn);
+    $myday_no = getTaskCountByStatus($user_id, 'PENDING', 'CURDATE()', $conn);
 
-// for  myday 
-$query = "SELECT * FROM tasks WHERE task_status = 'PENDING' AND (task_assigner = $user_id OR task_assignee = $user_id) AND DATE(deadline) = CURDATE()";
-
-$resultsmyday_tasks = $conn->query($query);
-if ($resultsmyday_tasks -> num_rows > 0 ){
-
-}
-
-// for count myday 
-$query = "SELECT count(*) as number_myday FROM tasks WHERE task_status = 'PENDING' AND DATE(deadline) = CURDATE() and (task_assigner = $user_id OR task_assignee = $user_id)";
-
-$resultsmyday = $conn->query($query);
-if ($resultsmyday -> num_rows > 0 ){
-    $row = $resultsmyday -> fetch_assoc();
-    $myday_no = $row['number_myday'];
-
-}
- // for completed  tasks 
- $query = "SELECT * FROM tasks WHERE task_status = 'COMPLETED' AND DATE(deadline) = CURDATE() and (task_assigner = $user_id OR task_assignee = $user_id)";
-
- $resultstasks_completed = $conn->query($query);
+    // Get Completed Tasks for Today
+    $resultstasks_completed = getTasksByStatusAndDate($user_id, 'COMPLETED',  $conn);
 
 
-if(isset($_SESSION['message'])){
-    echo $_SESSION['message'];
-    unset($_SESSION['message']);
-}
-}else{
-  Header("Location: task.php?You are not logged in");
+    // Display session message if exists
+    displaySessionMessage();
+
+} else {
+    header("Location: task.php?You are not logged in");
+    exit();
 }
 ?>
+
 
 
 <!DOCTYPE html>
@@ -170,25 +138,23 @@ if(isset($_SESSION['message'])){
         <!-- ============================================================== -->
         <!-- Topbar header - style you can find in pages.scss -->
         <!-- ============================================================== -->
-        <header class="topbar" data-navbarbg="skin5">
+        <header class="topbar bg-warning" data-navbarbg="skin5">
             <nav class="navbar top-navbar navbar-expand-md navbar-dark">
                 <div class="navbar-header" data-logobg="skin6">
-                    <!-- ============================================================== -->
-                    <!-- Logo -->
-                    <!-- ============================================================== -->
-                    
-                    <!-- ============================================================== -->
-                    <!-- End Logo -->
-                    <!-- ============================================================== -->
+                  
                     <!-- ============================================================== -->
                     <!-- toggle and nav items -->
                     <!-- ============================================================== -->
+
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
                     
                 </div>
                 <!-- ============================================================== -->
                 <!-- End Logo -->
                 <!-- ============================================================== -->
-                <div class="navbar-collapse collapse bg-warning" id="navbarSupportedContent" >
+                <div class="navbar-collapse collapse" id="navbarSupportedContent" >
                    
                     <!-- ============================================================== -->
                     <!-- Right side toggle and nav items -->
@@ -217,14 +183,25 @@ if(isset($_SESSION['message'])){
                             class="img-circle"><span class="text-white font-medium"><?php echo $username ?></span>
                             </a>
 
-                            <ul class="dropdown-menu">
-                            <?php if(isset($user_id)) {?>
-                            <li><a class="dropdown-item" href="profile.php">Profile</a></li>
-                            <li><a data-bs-toggle="modal" data-bs-target="#logout-modal" role="button" class="dropdown-item"  >Logout</a></li>
-                            <?php } else{?>
-                            <li><a data-bs-toggle="modal" data-bs-target="#signup-modal" role="button" class="dropdown-item" href="#">Signup</a></li>
-                            <li><a data-bs-toggle="modal" data-bs-target="#login-modal" role="button" class="dropdown-item" href="#">Login</a></li>
-                            <?php } ?>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                              <?php if(isset($user_id)) {?>
+                              <div id="left" class="d-flex justify-content-center">
+                                    <a class="btn profile-pic-enlarged" href="#">
+                                  <img src="plugins/images/users/<?php echo $profile_pic?>" alt="user-img" width="60" height="60"
+                                  class="img-circle"><span class="text-bg-white font-medium  d-flex justify-content-center"><?php echo $username ?>
+                                   (<?php echo $cash ?> GH₵)</span></a>
+                              </div>
+                              <hr>
+                              <div id="right" class="d-flex justify-content-center">
+                                  <li><a class="dropdown-item" href="profile.php">Profile</a></li>|
+                                  <li><a data-bs-toggle="modal" data-bs-target="#logout-modal" role="button" class="dropdown-item"  >Logout</a></li>
+                                  <?php } else{?>
+                                  <li><a data-bs-toggle="modal" data-bs-target="#signup-modal" role="button" class="dropdown-item" href="#">Signup</a></li>
+                                  <li><a data-bs-toggle="modal" data-bs-target="#login-modal" role="button" class="dropdown-item" href="#">Login</a></li>
+                                  
+                              </div>
+                            
+                           <?php } ?>
                             </ul>
                             </div>
                             </li>
@@ -760,46 +737,18 @@ if(isset($_SESSION['message'])){
         </div>
         <div class="modal-body">
         
-        <form action="plugins/actions/timetable_upload.php" method="POST" id="add_timetable" class="needs-validation" novalidate enctype="multipart/form-data">
+        <form action="" method="POST" id="add_timetable" class="needs-validation" novalidate enctype="multipart/form-data">
             <div class="input-group mb-3">
                 <input type="file" class="form-control" id="inputGroupFile02" name="timetable_file">
                 <label class="input-group-text" for="inputGroupFile02">Upload Timetable here</label>
             </div>
 
-            <!-- <div class="input-group mb-2">
-                <span class="input-group-text" id="reminderLabel2" style="cursor: pointer;">
-                    <label for="reminder"><img src="plugins/images/remind.png" style="width: 50px; height: 50px; cursor: pointer;" alt="reminder"  /></label>
-                </span>
-                <input type="datetime-local" placeholder="Y/M/D H:m:s" name="reminder" id="reminder2" disabled>
-            </div>
+            
 
-            <div class="input-group mb-2">
-                <span class="input-group-text" id="repeatLabel2" style="cursor: pointer;">
-                    <label for="repeat"><img src="plugins/images/repeat.png" style="width: 30px; height: 30px; cursor: pointer;" alt="repeat"  /></label>
-                </span>
-                <input type="text" placeholder="(num of days),(DAY,WEEK,YEAR or MONTH)" name="repeat" id="repeat2" disabled>
-            </div> -->
-
-            <button class="w-100 btn btn-primary btn-lg" name="sign_up">Upload</button>
+            <button class="w-100 btn btn-primary btn-lg" name="upload_timetable">Upload</button>
         </form>
 
-        <script>
-            document.getElementById('reminderLabel1').addEventListener('click', function() {
-                const reminderInput = document.getElementById('reminder1');
-                reminderInput.disabled = !reminderInput.disabled; // Toggle disabled state
-                if (!reminderInput.disabled) {
-                    reminderInput.focus(); // Optional: focus the input when enabled
-                }
-            });
-
-            document.getElementById('repeatLabel1').addEventListener('click', function() {
-                const repeatInput = document.getElementById('repeat1');
-                repeatInput.disabled = !repeatInput.disabled; // Toggle disabled state
-                if (!repeatInput.disabled) {
-                    repeatInput.focus(); // Optional: focus the input when enabled
-                }
-            });
-        </script>
+        
 
 
           </div>
@@ -819,47 +768,17 @@ if(isset($_SESSION['message'])){
         </div>
         <div class="modal-body">
         
-        <form action="plugins/actions/task_upload.php" method="POST" id="add_task" class="needs-validation" novalidate enctype="multipart/form-data">
+        <form action="" method="POST" id="add_task" class="needs-validation" novalidate enctype="multipart/form-data">
             <div class="input-group mb-3">
                 <input type="file" class="form-control" id="inputGroupFile02" name="task_file">
                 <label class="input-group-text" for="inputGroupFile02">Upload Task here</label>
             </div>
 
-            <!-- <div class="input-group mb-2">
-                <span class="input-group-text" id="reminderLabel2" style="cursor: pointer;">
-                    <label for="reminder"><img src="plugins/images/remind.png" style="width: 50px; height: 50px; cursor: pointer;" alt="reminder"  /></label>
-                </span>
-                <input type="datetime-local" placeholder="Y/M/D H:m:s" name="reminder" id="reminder2" disabled>
-            </div>
-
-            <div class="input-group mb-2">
-                <span class="input-group-text" id="repeatLabel2" style="cursor: pointer;">
-                    <label for="repeat"><img src="plugins/images/repeat.png" style="width: 30px; height: 30px; cursor: pointer;" alt="repeat"  /></label>
-                </span>
-                <input type="text" placeholder="(num of days),(DAY,WEEK,YEAR or MONTH)" name="repeat" id="repeat2" disabled>
-            </div> -->
-
-            <button class="w-100 btn btn-primary btn-lg" name="sign_up">Upload</button>
+           
+            <button class="w-100 btn btn-primary btn-lg" name="upload_task">Upload</button>
         </form>
 
-        <script>
-            document.getElementById('reminderLabel2').addEventListener('click', function() {
-                const reminderInput = document.getElementById('reminder2');
-                reminderInput.disabled = !reminderInput.disabled; // Toggle disabled state
-                if (!reminderInput.disabled) {
-                    reminderInput.focus(); // Optional: focus the input when enabled
-                }
-            });
-
-            document.getElementById('repeatLabel2').addEventListener('click', function() {
-                const repeatInput = document.getElementById('repeat2');
-                repeatInput.disabled = !repeatInput.disabled; // Toggle disabled state
-                if (!repeatInput.disabled) {
-                    repeatInput.focus(); // Optional: focus the input when enabled
-                }
-            });
-        </script>
-
+       
 
 
           </div>

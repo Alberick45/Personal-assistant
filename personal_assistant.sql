@@ -4,33 +4,44 @@ use personal_assistant;
 
 CREATE table family(
     id int primary key AUTO_INCREMENT,
-    name varchar(150),
+    name varchar(150) UNIQUE,
     creation_date date,
     head_phone VARCHAR(15),
-    family_security_code VARCHAR(15),
-    balance decimal(7,2) DEFAULT '0.00',
-    financial_goal decimal(7,2) DEFAULT '0.00',
+    family_security_code VARCHAR(255) UNIQUE NOT NULL, -- Store as hashed/encrypted
+    balance DECIMAL(15,2) DEFAULT '0.00',
+    financial_goal DECIMAL(15,2) DEFAULT '0.00',
     family_description text,
     profile_pic VARCHAR(100) DEFAULT 'default-pp.jpeg',
-    last_login DATETIME);
+    last_login DATETIME DEFAULT NULL
+    );
     
 
 CREATE table users(
     id int primary key AUTO_INCREMENT,
     name varchar(150),
     birthdate date,
-    phone VARCHAR(15),
-    username varchar(150) UNIQUE,
-    password varchar(150) UNIQUE, 
-    balance decimal(7,2) DEFAULT '0.00',
-    financial_goal decimal(7,2) DEFAULT '0.00',
+    phone VARCHAR(20) UNIQUE, -- International format
+    username varchar(100) UNIQUE,
+    password VARCHAR(255) NOT NULL, -- Store hashed passwords
+    balance DECIMAL(15,2) DEFAULT '0.00',
+    financial_goal DECIMAL(15,2) DEFAULT '0.00',
     profile_pic VARCHAR(100) DEFAULT 'default-pp.jpeg',
     family_id int,
     family_position ENUM('Dad','Mom','Son','Daughter','Grandmom','Grandpa','Nephew','Niece','Brother','Sister'),
-    last_login DATETIME,
+    last_login DATETIME  DEFAULT NULL,
     
     constraint family_belonged foreign key (family_id)  references family(id) on delete set NULL);
     
+CREATE TABLE family_members (
+    id INT AUTO_INCREMENT PRIMARY KEY,  -- A unique ID for each entry in this table
+    family_id INT NOT NULL,  -- The ID of the family (foreign key from the 'family' table)
+    user_id INT NOT NULL,    -- The ID of the user (foreign key from the 'users' table)
+    join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- The date and time when the user joined the family
+    FOREIGN KEY (family_id) REFERENCES family(id) ON DELETE CASCADE,  -- Ensures family_id refers to a valid family
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,  -- Ensures user_id refers to a valid user
+    UNIQUE(family_id, user_id)  -- Ensure that a user can only belong to the family once
+);
+
 
 CREATE table tasks(
     id int primary key AUTO_INCREMENT,
@@ -89,18 +100,18 @@ CREATE table projects(
 
 CREATE TABLE financial_category (
   category_id INT PRIMARY KEY AUTO_INCREMENT,
-  category_name VARCHAR(20),
-  category ENUM('expense', 'income', 'asset', 'liability'), 
+  category_name VARCHAR(20) NOT NULL,
+  category ENUM('expense', 'income', 'asset', 'liability') NOT NULL, 
   category_type ENUM('Parent', 'Child') DEFAULT 'Child',
   category_user_id INT,
-  family_id int,
+  family_id INT,
   parent_category_id INT NULL, -- Foreign key to relate with parent categories
+
+  FOREIGN KEY (parent_category_id) REFERENCES financial_category(category_id) ON DELETE SET NULL,
   
-  FOREIGN KEY (parent_category_id) REFERENCES financial_category(category_id),
-  
-	CONSTRAINT category_user_id FOREIGN KEY (category_user_id) REFERENCES users (id) on delete set NULL,
-    constraint family_financers foreign key (family_id)  references family(id) on delete set NULL
-) ;
+  CONSTRAINT fk_category_user FOREIGN KEY (category_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_family FOREIGN KEY (family_id) REFERENCES family(id) ON DELETE SET NULL
+);
 
  
 
@@ -206,41 +217,55 @@ CREATE TABLE inventory (
 
 
 
-
-
+-- Scheduled Event for Repeating Tasks
 DELIMITER //
 
 CREATE EVENT repeat_tasks_event
-ON SCHEDULE EVERY 1 DAY -- This runs daily, adjust as needed
-DO
+ON SCHEDULE EVERY 1 DAY
+DO 
 BEGIN
-    -- Insert new tasks for repeating ones
-    INSERT INTO tasks (task_name, deadline, task_duration, task_description, 
-                       task_status, task_assigner, task_importance, task_assignee, 
-                       task_resource_filename, repeat_status, repeat_interval, 
-                       reminder_status, reminder_interval)
-    SELECT 
+    DECLARE exit handler FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+    END;
+
+    START TRANSACTION;
+
+    INSERT INTO tasks (
         task_name, 
-        -- Adjust the deadline based on repeat_interval and its unit
-        CASE 
-            WHEN repeat_unit = 'DAY' THEN DATE_ADD(deadline, INTERVAL repeat_interval DAY)
-            WHEN repeat_unit = 'WEEK' THEN DATE_ADD(deadline, INTERVAL repeat_interval WEEK)
-            WHEN repeat_unit = 'MONTH' THEN DATE_ADD(deadline, INTERVAL repeat_interval MONTH)
-            WHEN repeat_unit = 'YEAR' THEN DATE_ADD(deadline, INTERVAL repeat_interval YEAR)
-        END AS new_deadline,
-        
+        deadline, 
         task_duration, 
         task_description, 
-        'PENDING' AS task_status, -- Reset status to 'PENDING'
+        task_status, 
         task_assigner, 
         task_importance, 
         task_assignee, 
         task_resource_filename, 
         repeat_status, 
         repeat_interval, 
-        repeat_unit,
+        repeat_unit, 
         reminder_status, 
-        -- Adjust the reminder based on the same logic
+        reminder_interval
+    )
+    SELECT 
+        task_name,
+        CASE 
+            WHEN repeat_unit = 'DAY' THEN DATE_ADD(deadline, INTERVAL repeat_interval DAY)
+            WHEN repeat_unit = 'WEEK' THEN DATE_ADD(deadline, INTERVAL repeat_interval WEEK)
+            WHEN repeat_unit = 'MONTH' THEN DATE_ADD(deadline, INTERVAL repeat_interval MONTH)
+            WHEN repeat_unit = 'YEAR' THEN DATE_ADD(deadline, INTERVAL repeat_interval YEAR)
+        END AS new_deadline,
+        task_duration,
+        task_description,
+        'PENDING' AS task_status,
+        task_assigner,
+        task_importance,
+        task_assignee,
+        task_resource_filename,
+        repeat_status,
+        repeat_interval,
+        repeat_unit,
+        reminder_status,
         CASE 
             WHEN repeat_unit = 'DAY' THEN DATE_ADD(reminder_interval, INTERVAL repeat_interval DAY)
             WHEN repeat_unit = 'WEEK' THEN DATE_ADD(reminder_interval, INTERVAL repeat_interval WEEK)
@@ -248,10 +273,10 @@ BEGIN
             WHEN repeat_unit = 'YEAR' THEN DATE_ADD(reminder_interval, INTERVAL repeat_interval YEAR)
         END AS new_reminder_interval
     FROM tasks
-    WHERE repeat_status = 'Yes' AND task_status = 'COMPLETED';
+    WHERE repeat_status = 'Yes' AND task_status = 'COMPLETED'
+    ON DUPLICATE KEY UPDATE task_status = VALUES(task_status);
 
-    -- Optional: Delete completed tasks if needed
-    /*DELETE FROM tasks WHERE task_status = 'COMPLETED' AND repeat_status = 'Yes';*/
+    COMMIT;
+END //
 
-END;
-
+DELIMITER ;

@@ -1,6 +1,7 @@
 <?php
 
 require_once("plugins/actions/config.php");
+require_once("plugins/actions/functions.php");  // Include the functions file
 session_start();
 
 if(isset($_SESSION['user_id'])){
@@ -8,172 +9,94 @@ if(isset($_SESSION['user_id'])){
 
 $user_id = $_SESSION['user_id'];
 
-// for myday 
-$query = "SELECT count(*) as number_myday FROM tasks WHERE task_status = 'PENDING' AND DATE(deadline) = CURDATE() AND (task_assigner = $user_id OR task_assignee = $user_id)";
 
-$resultsmyday = $conn->query($query);
-if ($resultsmyday -> num_rows > 0 ){
-    $row = $resultsmyday -> fetch_assoc();
-    $myday_no = $row['number_myday'];
 
+// Get data
+$only_income = getTransactionSum($user_id, 'income', $conn);
+$positive_cashflow = getCashflow($user_id, 'asset', $conn);
+$negative_cashflow = getCashflow($user_id, 'liability', $conn);
+
+// Fetch total expense and total for selected categories
+$only_expense = getTransactionSum($user_id, 'expense', $conn);
+$total_expense = $only_expense + $positive_cashflow + $negative_cashflow;
+
+// Calculate total values
+$passive_income = $positive_cashflow - $negative_cashflow;
+$total_income = $passive_income + $only_income;
+
+
+// Fetch user details
+$user_data = getUserData($user_id, $conn);
+if ($user_data) {
+    $username = $user_data['username'];
+    $profile_pic = $user_data['profile_pic'];
+    $cash = $user_data['balance'];
+    $goal = $user_data['financial_goal'];
 }
 
 
 
 
 
-// for  user 
-$query = "SELECT * FROM users WHERE id = $user_id";
 
-$results = $conn->query($query);
+// Handling add ingredient request
+if (isset($_POST['add_ingredient'])) {
+    $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : '';
+    $price = !empty($_POST['price']) ? $conn->real_escape_string($_POST['price']) : '0.00';
+    $quantity = !empty($_POST['quantity']) ? $conn->real_escape_string($_POST['quantity']) : 0;
 
-if ($results -> num_rows > 0){
-    while($row = $results->fetch_assoc()){
-        $username = $row['username'];
-        $profile_pic = $row['profile_pic'];
-        $cash = $row['balance'];
-        $goal = $row['financial_goal'];
+    $message = addIngredient($user_id, $name, $price, $quantity);
+    if ($message) {
+        echo $message;
     }
 }
 
-// for only total income
-$query = "SELECT sum(total_amount) as number_income FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'income'";
-
-$resultsincomeno= $conn->query($query);
-if ($resultsincomeno -> num_rows > 0 ){
-    $row = $resultsincomeno -> fetch_assoc();
-    $only_income = $row['number_income'];
-}
-
-
-
-// for total positive cashflow
-$query = "SELECT sum(abs(cashflow)) as positive_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'asset'";
-
-$resultspositive_cashflow = $conn->query($query);
-if ($resultspositive_cashflow -> num_rows > 0 ){
-    $row = $resultspositive_cashflow -> fetch_assoc();
-    $positive_cashflow = $row['positive_cashflow'];
-}
-// for total negative cashflow
-$query = "SELECT sum(abs(cashflow)) as negative_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'liability'";
-
-$resultsnegative_cashflow = $conn->query($query);
-if ($resultsnegative_cashflow -> num_rows > 0 ){
-    $row = $resultsnegative_cashflow -> fetch_assoc();
-    $negative_cashflow = $row['negative_cashflow'];
-}
-
-// for only total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'expense'";
-
-$resultsexpenseno= $conn->query($query);
-if ($resultsexpenseno -> num_rows > 0 ){
-    $row = $resultsexpenseno -> fetch_assoc();
-    $only_expense = $row['number_expense'];
-}
-// for total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND (fc.category = 'expense' OR fc.category = 'asset' OR fc.category = 'liability')";
-
-$resultsexpensetotal= $conn->query($query);
-if ($resultsexpensetotal -> num_rows > 0 ){
-    $row = $resultsexpensetotal -> fetch_assoc();
-    $total_expense = $row['number_expense'];
-}
-
-$passive_income = ($positive_cashflow - $negative_cashflow);
-
-
-
-
-// for total income sum
-$total_income =$passive_income + $only_income;
-
+// Handle Add Dish
 if (isset($_POST['add_dish'])) {
-    // Retrieve and sanitize input values
-    $user = $user_id;
-    $day = !empty($_POST['day']) ? $conn->real_escape_string($_POST['day']) : null;
-    $time = !empty($_POST['time']) ? $conn->real_escape_string($_POST['time']) : null;
-    $dish_name = !empty($_POST['dish_name']) ? $conn->real_escape_string($_POST['dish_name']) : '';
+    $day = $_POST['day'];
+    $time = $_POST['time'];
+    $dish_name = $_POST['dish_name'];
+    $user_id = $_POST['user'];
 
-    // Check if day and time were provided
-    if (!$day || !$time) {
-        echo "Error: Please provide both day and time.";
-        exit();
-    }
-
-    // JSON object for dish details
-    $dish_details = json_encode([
-        'dish_category' => '',
-        'preparation_process' => '',
-        'dietary_restrictions' => '',
-        'ingredients_used' => [
-            'name' => '',
-            'quantity' => ''
-        ],
+    // Create dish details array to include day and time
+    $dish_details = [
         'day' => $day,
         'time' => $time
-    ], JSON_UNESCAPED_SLASHES);
+    ];
 
-    // Insert query
-    $querydishentry = "INSERT INTO menu (dish_details, dish_name, user_id) 
-                       VALUES ('$dish_details', '$dish_name', $user)";
-
-    if ($conn->query($querydishentry) === TRUE) {
-        // Redirect to refresh the page after insertion
+    if (addDish($conn, $user_id, $dish_name, $day, $time, $dish_details)) {
         header("Location: " . $_SERVER['PHP_SELF']);
         exit();
     } else {
-        echo "Error: " . $querydishentry . "<br>" . $conn->error;
+        echo "Error adding dish: " . $conn->error;
+    }
+}
+
+// Handle Update Dish
+if (isset($_POST['update_dish'])) {
+    $day = $_POST['day'];
+    $time = $_POST['time'];
+    $dish_name = $_POST['dish_name'];
+    $user_id = $_POST['user'];
+
+    if (updateDish($conn, $user_id, $dish_name, $day, $time)) {
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit();
+    } else {
+        echo "Error updating dish: " . $conn->error;
     }
 }
 
 
-
-
-// for adding ingredient 
-if (isset($_POST['add_ingredient'])) {
-  
-  // Retrieve and sanitize input values
-  $ingredient_user = $user_id;
-  $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : '';
-  $price = !empty($_POST['price']) ? $conn->real_escape_string($_POST['price']) : '0.00';
-  $quantity = !empty($_POST['quantity']) ? $conn->real_escape_string($_POST['quantity']) : 0;
-
-
-    $queryingrediententry = "INSERT INTO inventory (ingredient_name, price_per_unit, total_quantity, user_id) 
-    VALUES ('$name', '$price', $quantity, $ingredient_user)";
-    $conn->query($queryingrediententry);
-
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
-  }
-
-
-
+// Calculate balance
 $balance = $total_income - $total_expense;
-
-// Use a prepared statement to update the balance securely
-$query_profilebalance = "UPDATE users SET balance = ? WHERE id = ?";
-
-$stmt = $conn->prepare($query_profilebalance);
-if ($stmt) {
-    $stmt->bind_param('di', $balance, $user_id);  // 'd' for decimal, 'i' for integer
-    $stmt->execute();
-    $stmt->close();
-} else {
-    echo "Error: " . $conn->error;
-}
+updateUserBalance($user_id, $balance, $conn);
 
 
 
 
-
-if(isset($_SESSION['message'])){
-    echo $_SESSION['message'];
-    unset($_SESSION['message']);
-}
+// Display session message if exists
+displaySessionMessage();
 }
 ?>
 
@@ -217,19 +140,23 @@ if(isset($_SESSION['message'])){
         <!-- ============================================================== -->
         <!-- Topbar header - style you can find in pages.scss -->
         <!-- ============================================================== -->
-        <header class="topbar" data-navbarbg="skin5">
+        <header class="topbar bg-warning" data-navbarbg="skin5">
             <nav class="navbar top-navbar navbar-expand-md navbar-dark">
                 <div class="navbar-header" data-logobg="skin6">
                   
                     <!-- ============================================================== -->
                     <!-- toggle and nav items -->
                     <!-- ============================================================== -->
+
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
                     
                 </div>
                 <!-- ============================================================== -->
                 <!-- End Logo -->
                 <!-- ============================================================== -->
-                <div class="navbar-collapse collapse bg-warning" id="navbarSupportedContent" >
+                <div class="navbar-collapse collapse" id="navbarSupportedContent" >
                    
                     <!-- ============================================================== -->
                     <!-- Right side toggle and nav items -->
@@ -393,67 +320,51 @@ $times = ["morning", "afternoon", "evening"];
             </table>
 
             
-            <!-- Update menu modal -->
-            <div class="modal fade" id="update_menu_modal" tabindex="-1" aria-labelledby="updateMenuLabel" aria-hidden="true">
-                <div class="modal-dialog">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="updateMenuLabel">Update Dish</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <form action="" method="POST">
-                                <input type="hidden" name="day" id="update-modal-day">
-                                <input type="hidden" name="time" id="update-modal-time">
-                                <div class="mb-3">
-                                    <label for="dish_name" class="form-label">Dish Name</label>
-                                    <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="dish_name" class="form-label">Dish Name</label>
-                                    <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="dish_name" class="form-label">Dish Name</label>
-                                    <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="dish_name" class="form-label">Dish Name</label>
-                                    <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="dish_name" class="form-label">Dish Name</label>
-                                    <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                                </div>
-                                <button type="submit" class="btn btn-success w-100">Update Dish</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-
-                            
-            <!-- Add Menu Modal -->
-<div class="modal fade" id="add_menu_modal" tabindex="-1" aria-labelledby="addMenuLabel" aria-hidden="true">
+            <!-- Update Dish Modal -->
+<div class="modal fade" id="update_menu_modal" tabindex="-1" aria-labelledby="updateMenuLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="addMenuLabel">Add Menu</h5>
+                <h5 class="modal-title" id="updateMenuLabel">Update Dish</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form action="" method="POST">
-                    <input type="hidden" name="day" id="add-modal-day"> <!-- Corrected ID -->
-                    <input type="hidden" name="time" id="add-modal-time"> <!-- Corrected ID -->
-                    <input type="hidden" name="user" value="<?php echo $user_id; ?>">
+                    <input type="hidden" name="day" id="update-modal-day">
+                    <input type="hidden" name="time" id="update-modal-time">
+                    <input type="hidden" name="user" value="<?php echo htmlspecialchars($user_id); ?>">
+                    <div class="mb-3">
+                        <label for="dish_name" class="form-label">Dish Name</label>
+                        <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100" name="update_dish">Update Dish</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
+
+
+                            
+<!-- Add Dish Modal -->
+<div class="modal fade" id="add_menu_modal" tabindex="-1" aria-labelledby="addMenuLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addMenuLabel">Add Dish</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="" method="POST">
+                    <input type="hidden" name="day" id="add-modal-day">
+                    <input type="hidden" name="time" id="add-modal-time">
+                    <input type="hidden" name="user" value="<?php echo htmlspecialchars($user_id); ?>">
                     <div class="mb-3">
                         <label for="dish_name" class="form-label">Dish Name</label>
                         <input type="text" class="form-control" name="dish_name" id="dish_name" required>
                     </div>
-
-                    <input type="submit" class="btn btn-primary w-100" name="add_dish" value="Add Dish">
+                    <button type="submit" class="btn btn-primary w-100" name="add_dish">Add Dish</button>
                 </form>
             </div>
         </div>
@@ -463,29 +374,27 @@ $times = ["morning", "afternoon", "evening"];
 
 
 
+
 <script>
-    const addMenuModal = document.getElementById('add_menu_modal');
+   const addMenuModal = document.getElementById('add_menu_modal');
 const updateMenuModal = document.getElementById('update_menu_modal');
 
-// Add Menu Modal: Populate hidden fields with day and time
+// Add Menu Modal: Populate day and time fields
 addMenuModal.addEventListener('show.bs.modal', function (event) {
     const button = event.relatedTarget;
-    const info = button.getAttribute('data-bs-add-info').split(',');
-    document.getElementById('add-modal-day').value = info[0];
-    document.getElementById('add-modal-time').value = info[1];
+    const [day, time] = button.getAttribute('data-bs-add-info').split(',');
+    document.getElementById('add-modal-day').value = day;
+    document.getElementById('add-modal-time').value = time;
 });
-console.log(info);
 
-// Update Menu Modal: Populate hidden fields and input with existing data
+// Update Menu Modal: Populate day, time, and dish name fields
 updateMenuModal.addEventListener('show.bs.modal', function (event) {
     const button = event.relatedTarget;
-    const info = button.getAttribute('data-bs-update-info').split(',');
-    document.getElementById('update-modal-day').value = info[0];
-    document.getElementById('update-modal-time').value = info[1];
-    document.getElementById('update-dish-name').value = info[2];
+    const [day, time, dishName] = button.getAttribute('data-bs-update-info').split(',');
+    document.getElementById('update-modal-day').value = day;
+    document.getElementById('update-modal-time').value = time;
+    document.getElementById('update-dish-name').value = dishName;
 });
-
-
 
 </script>
 
@@ -506,7 +415,7 @@ updateMenuModal.addEventListener('show.bs.modal', function (event) {
                       
                       
                       <?php 
-$resultsinventoryquery = "SELECT * FROM inventory";
+$resultsinventoryquery = "SELECT * FROM inventory WHERE user_id = $user_id";
 $resultsinventory = $conn->query($resultsinventoryquery);
 
 if ($resultsinventory->num_rows > 0) {

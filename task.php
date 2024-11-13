@@ -1,60 +1,41 @@
 <?php
 
 require_once("plugins/actions/config.php");
+require_once("plugins/actions/functions.php");  // Include the functions file
 session_start();
 
-if(isset($_SESSION['user_id'])){
+if (isset($_SESSION['user_id'])) {
+    $user_id = $_SESSION['user_id'];
 
+    // Get task-related counts and user data
+    $myday_no = getMyDayCount($user_id, $conn);
+    $user_data = getUserData($user_id, $conn);
+    $important_no = getImportantTaskCount($user_id, $conn);
+    $tasks_no = getTotalTaskCount($user_id, $conn);
 
-$user_id = $_SESSION['user_id'];
+    // Extract user data values
+    $username = $user_data['username'];
+    $profile_pic = $user_data['profile_pic'];
+    // Get data
+    $only_income = getTransactionSum($user_id, 'income', $conn);
+    $positive_cashflow = getCashflow($user_id, 'asset', $conn);
+    $negative_cashflow = getCashflow($user_id, 'liability', $conn);
 
+    // Fetch total expense and total for selected categories
+    $only_expense = getTransactionSum($user_id, 'expense', $conn);
+    $total_expense = $only_expense + $positive_cashflow + $negative_cashflow;
 
-// for myday 
-$query = "SELECT count(*) as number_myday FROM tasks WHERE task_status = 'PENDING' AND DATE(deadline) = CURDATE() AND (task_assigner = $user_id OR task_assignee = $user_id)";
+    // Calculate total values
+    $passive_income = $positive_cashflow - $negative_cashflow;
+    $total_income = $passive_income + $only_income;
 
-$resultsmyday = $conn->query($query);
-if ($resultsmyday -> num_rows > 0 ){
-    $row = $resultsmyday -> fetch_assoc();
-    $myday_no = $row['number_myday'];
+    $cash = $user_data['balance'];
+    // Calculate balance
+    $balance = $total_income - $total_expense;
+    updateUserBalance($user_id, $balance, $conn);
 
-}
-
-// for  user 
-$query = "SELECT * FROM users WHERE id = $user_id";
-
-$results = $conn->query($query);
-
-if ($results -> num_rows > 0){
-    while($row = $results->fetch_assoc()){
-        $username = $row['username'];
-        $profile_pic = $row['profile_pic'];
-    }
-}
-
-// for important tasks 
-$query = "SELECT count(*) as number_important FROM tasks WHERE task_status = 'PENDING' AND task_importance = 'Important' AND (task_assigner = $user_id OR task_assignee = $user_id)";
-
-$resultsimportant= $conn->query($query);
-if ($resultsimportant -> num_rows > 0 ){
-    $row = $resultsimportant -> fetch_assoc();
-    $important_no = $row['number_important'];
-
-}
-// for  tasks 
-$query = "SELECT count(*) as number_tasks FROM tasks WHERE (task_assigner = $user_id OR task_assignee = $user_id)";
-
-$resultstasks = $conn->query($query);
-if ($resultstasks -> num_rows > 0 ){
-    $row = $resultstasks -> fetch_assoc();
-    $tasks_no = $row['number_tasks'];
-
-}
-
-
-if(isset($_SESSION['message'])){
-    echo $_SESSION['message'];
-    unset($_SESSION['message']);
-}
+    // Display session message if exists
+    displaySessionMessage();
 }
 ?>
 
@@ -75,6 +56,11 @@ if(isset($_SESSION['message'])){
     <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
     <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
 <![endif]-->
+<style>
+  /* .navbar-toggler-icon {
+    background-color: black; /* Or any other color 
+  } */
+</style>
 </head>
 
 <body class="bg-dark">
@@ -94,19 +80,23 @@ if(isset($_SESSION['message'])){
         <!-- ============================================================== -->
         <!-- Topbar header - style you can find in pages.scss -->
         <!-- ============================================================== -->
-        <header class="topbar" data-navbarbg="skin5">
+        <header class="topbar bg-warning" data-navbarbg="skin5">
             <nav class="navbar top-navbar navbar-expand-md navbar-dark">
                 <div class="navbar-header" data-logobg="skin6">
                   
                     <!-- ============================================================== -->
                     <!-- toggle and nav items -->
                     <!-- ============================================================== -->
+
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
                     
                 </div>
                 <!-- ============================================================== -->
                 <!-- End Logo -->
                 <!-- ============================================================== -->
-                <div class="navbar-collapse collapse bg-warning" id="navbarSupportedContent" >
+                <div class="navbar-collapse collapse" id="navbarSupportedContent" >
                    
                     <!-- ============================================================== -->
                     <!-- Right side toggle and nav items -->
@@ -135,14 +125,25 @@ if(isset($_SESSION['message'])){
                             class="img-circle"><span class="text-white font-medium"><?php echo $username ?></span>
                             </a>
 
-                            <ul class="dropdown-menu">
-                            <?php if(isset($user_id)) {?>
-                            <li><a class="dropdown-item" href="profile.php">Profile</a></li>
-                            <li><a data-bs-toggle="modal" data-bs-target="#logout-modal" role="button" class="dropdown-item"  >Logout</a></li>
-                            <?php } else{?>
-                            <li><a data-bs-toggle="modal" data-bs-target="#signup-modal" role="button" class="dropdown-item" href="#">Signup</a></li>
-                            <li><a data-bs-toggle="modal" data-bs-target="#login-modal" role="button" class="dropdown-item" href="#">Login</a></li>
-                            <?php } ?>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                              <?php if(isset($user_id)) {?>
+                              <div id="left" class="d-flex justify-content-center">
+                                    <a class="btn profile-pic-enlarged" href="#">
+                                  <img src="plugins/images/users/<?php echo $profile_pic?>" alt="user-img" width="60" height="60"
+                                  class="img-circle"><span class="text-bg-white font-medium  d-flex justify-content-center"><?php echo $username ?>
+                                   (<?php echo $cash ?> GH₵)</span></a>
+                              </div>
+                              <hr>
+                              <div id="right" class="d-flex justify-content-center">
+                                  <li><a class="dropdown-item" href="profile.php">Profile</a></li>|
+                                  <li><a data-bs-toggle="modal" data-bs-target="#logout-modal" role="button" class="dropdown-item"  >Logout</a></li>
+                                  <?php } else{?>
+                                  <li><a data-bs-toggle="modal" data-bs-target="#signup-modal" role="button" class="dropdown-item" href="#">Signup</a></li>
+                                  <li><a data-bs-toggle="modal" data-bs-target="#login-modal" role="button" class="dropdown-item" href="#">Login</a></li>
+                                  
+                              </div>
+                            
+                           <?php } ?>
                             </ul>
                             </div>
                             </li>

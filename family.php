@@ -1,441 +1,241 @@
+
 <?php
 
 require_once("plugins/actions/config.php");
+require_once("plugins/actions/family_functions.php");  
+
 session_start();
 
-if(isset($_SESSION['user_id'])){
+if (isset($_SESSION['user_id'])) {
+
+  $user_id = $_SESSION['user_id'];
+  
+  // Retrieve user data
+  $user_data = getUserData($user_id, $conn);
+  $family_id = $user_data['family_id'];
+  $username = $user_data['username'];
+  $user_profile_pic = $user_data['profile_pic'];
+  $cash = $user_data['balance'] ?? 0;
+  $goal = $user_data['financial_goal'] ?? 0;
+  $family_position = $user_data['family_position'] ?? 'Your role (e.g., parent, sibling)';
+
+  $only_user_income = getTransactionSum( $user_id, 'income', $conn);
+  $only_user_expense = getTransactionSum( $user_id, 'expense', $conn);
+  $positive_user_cashflow = getCashflow($user_id, 'asset', $conn);
+  $negative_user_cashflow = getCashflow($user_id, 'liability', $conn);
+  $passive_user_income = $positive_user_cashflow - $negative_user_cashflow;
+  $total_user_income = $passive_user_income + $only_user_income;
+  $total_user_expense = $only_user_expense;
+  
+  // Calculate balance and update in database
+  $user_balance = $total_user_income - $total_user_expense;
+  updateUserBalance($user_id, $user_balance, $conn);
+
+  if (isset($family_id)) {
+    // Retrieve family data
+    $family_details = getFamilyDetails($conn, $family_id);
+    $family_name = $family_details['name'];
+    $family_profile_pic = $family_details['profile_pic'];
+    $cash = $family_details['balance'] ?? 0;
+    $family_description = $family_details['family_description'] ?? 0;
+    $goal = $family_details['financial_goal'] ?? 0;
+
+    // Retrieve additional data for family financials, transactions, etc.
+    $resultsBudget = getFinancialData($conn, 'budget', $family_id);
+    $resultsResources = getFinancialData($conn, 'resources', $family_id);
+    $resultsTransactions = getFinancialData($conn, 'transactions', $family_id);
+    $only_income = getCategorySum($conn, $family_id, 'income');
+    $only_expense = getCategorySum($conn, $family_id, 'expense');
+    $positive_cashflow = getCashflowByCategory($conn, $family_id, 'asset');
+    $negative_cashflow = getCashflowByCategory($conn, $family_id, 'liability');
+    $passive_income = $positive_cashflow - $negative_cashflow;
+    $total_income = $passive_income + $only_income;
+    $total_expense = $only_expense;
+    
+    // Calculate balance and update in database
+    updateBalance($conn, $family_id, $total_income, $total_expense);
 
 
-$user_id = $_SESSION['user_id'];
-
-// for myday 
-$query = "SELECT count(*) as number_myday FROM tasks WHERE task_status = 'PENDING' AND DATE(deadline) = CURDATE() AND (task_assigner = $user_id OR task_assignee = $user_id)";
-
-$resultsmyday = $conn->query($query);
-if ($resultsmyday -> num_rows > 0 ){
-    $row = $resultsmyday -> fetch_assoc();
-    $myday_no = $row['number_myday'];
-
-}
-
-// for diary  
-$resultsfetchdiaryquery = "SELECT * FROM Diary  WHERE diary_owner = $user_id ";
-$resultsfetchdiaryquery = "SELECT * FROM Diary  WHERE diary_owner = $user_id ";
+   // Fetch all categories
+$financial_categories = fetchFinancialCategories($conn, $family_id);
 
 
-$resultsfetchdiary = $conn->query($resultsfetchdiaryquery);
+// Handling financial categories
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
+    // Retrieve form values
+    $name = mysqli_real_escape_string($conn, $_POST['category_name']);
+    $category_type = mysqli_real_escape_string($conn, $_POST['category_type']); // Asset, Liability, Income, Expense
+    $category_level = $_POST['category_level']; // Parent or Child
 
+    // Set parent_id based on category level
+    $parent_id = ($category_level === 'child' && !empty($_POST['parent_category'])) 
+                 ? mysqli_real_escape_string($conn, $_POST['parent_category']) 
+                 : null;
 
+    // Call function to add category
+    $result = addFinancialCategory($conn, $name, $parent_id, $category_type, $family_id);
 
-// for  user 
-$query = "SELECT * FROM users WHERE id = $user_id";
-
-$results = $conn->query($query);
-
-if ($results -> num_rows > 0){
-    while($row = $results->fetch_assoc()){
-        $username = $row['username'];
-        $profile_pic = $row['profile_pic'];
-        $cash = $row['balance'];
-        $goal = $row['financial_goal'];
+    // Provide success or error feedback
+    if ($result) {
+        header("Location: " . $_SERVER['PHP_SELF'] . "?success=Category added successfully!");
+    } else {
+        header("Location: " . $_SERVER['PHP_SELF'] . "?error=Failed to add category.");
     }
 }
 
 
 
-// for budget 
-$resultsbudgetquery = "SELECT * FROM budget b LEFT JOIN financial_category fc ON b.category_id = fc.category_id WHERE  b.user_id = $user_id ";
+// Check if form is submitted to update a category
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_category'])) {
+    // Retrieve form values
+    $id = mysqli_real_escape_string($conn, $_POST['category_id']);
+    $name = mysqli_real_escape_string($conn, $_POST['category_name']);
+    $parent_id = mysqli_real_escape_string($conn, $_POST['parent_category']);
+    $category_type = mysqli_real_escape_string($conn, $_POST['category_type']);
 
+    // Call function to update category
+    $result = updateFinancialCategory($conn, $id, $name, $parent_id, $category_type, $family_id);
 
-$resultsbudget = $conn->query(query: $resultsbudgetquery);
-// for resources 
-$resultsresourcesquery = "SELECT * FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id ";
-
-
-$resultsresources = $conn->query(query: $resultsresourcesquery);
-// for transactions 
-$resultstransactionquery = "SELECT * FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id ";
-
-
-$resultstransaction = $conn->query($resultstransactionquery);
-// for income 
-$resultsincomequery = "SELECT * FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'income'";
-
-
-$resultsincome = $conn->query($resultsincomequery);
-
-
-// for expense 
-$resultsexpensequery = "SELECT * FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'expense'";
-
-
-$resultsexpense = $conn->query($resultsexpensequery);
-
-// for assets 
-$resultsassetsquery = "SELECT * FROM  resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'asset'";
-
-
-$resultsassets = $conn->query($resultsassetsquery);
-
-// for liabilities 
-$resultsliabilitiesquery = "SELECT * FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'liability'";
-
-
-$resultsliabilities = $conn->query($resultsliabilitiesquery);
-
-
-
-// for  user 
-$query = "SELECT * FROM users WHERE id = $user_id";
-
-$results = $conn->query($query);
-
-if ($results -> num_rows > 0){
-    while($row = $results->fetch_assoc()){
-        $username = $row['username'];
-        $profile_pic = $row['profile_pic'];
-        $cash = $row['balance'];
-        $goal = $row['financial_goal'];
+    // Provide success or error feedback
+    if ($result) {
+        header("Location: " . $_SERVER['PHP_SELF']);
+    } else {
+        header("Location: " . $_SERVER['PHP_SELF']);
     }
 }
 
-// for only total income
-$query = "SELECT sum(total_amount) as number_income FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'income'";
+// update family profile
+if (isset($_POST['update_family'])) {
+    // Get form inputs
+    $family_name = $_POST['family_name'] ?? '';
+    $family_goal = $_POST['family_goal'] ?? '';
+    $family_description = $_POST['family_description'] ?? '';
+    $family_profile_pic = $_FILES['family_profile_pic'];
+    $old_family_profile_pic = $_POST['old_family_profile_pic'] ?? '';
 
-$resultsincomeno= $conn->query($query);
-if ($resultsincomeno -> num_rows > 0 ){
-    $row = $resultsincomeno -> fetch_assoc();
-    $only_income = $row['number_income'];
+    // Assume $conn is your database connection and $family_id is the ID of the family being updated
+    $response = updateFamilyProfile($conn, $family_id, $family_name,  $family_goal, $family_description, $family_profile_pic, $old_family_profile_pic);
+
+    // Redirect or show success/error message
+    if (strpos($response, 'updated') !== false) {
+        header("Location:  ". $_SERVER['PHP_SELF']. "?success=" . urlencode($response));
+    } else {
+        header("Location: ". $_SERVER['PHP_SELF']."?error=" . urlencode($response));
+    }
 }
 
 
+// family role
 
-// for total positive cashflow
-$query = "SELECT sum(abs(cashflow)) as positive_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'asset'";
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
+    // Retrieve the form data
+    $family_role = $_POST['family_role'] ?? '';
 
-$resultspositive_cashflow = $conn->query($query);
-if ($resultspositive_cashflow -> num_rows > 0 ){
-    $row = $resultspositive_cashflow -> fetch_assoc();
-    $positive_cashflow = $row['positive_cashflow'];
-}
-// for total negative cashflow
-$query = "SELECT sum(abs(cashflow)) as negative_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'liability'";
+    // Call the function to update family position
+    $response = updateFamilyPosition($conn, $user_id, $family_role);
 
-$resultsnegative_cashflow = $conn->query($query);
-if ($resultsnegative_cashflow -> num_rows > 0 ){
-    $row = $resultsnegative_cashflow -> fetch_assoc();
-    $negative_cashflow = $row['negative_cashflow'];
-}
-
-// for only total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'expense'";
-
-$resultsexpenseno= $conn->query($query);
-if ($resultsexpenseno -> num_rows > 0 ){
-    $row = $resultsexpenseno -> fetch_assoc();
-    $only_expense = $row['number_expense'];
-}
-// for total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND (fc.category = 'expense' OR fc.category = 'asset' OR fc.category = 'liability')";
-
-$resultsexpensetotal= $conn->query($query);
-if ($resultsexpensetotal -> num_rows > 0 ){
-    $row = $resultsexpensetotal -> fetch_assoc();
-    $total_expense = $row['number_expense'];
+    // Redirect or display success/error message
+    if (strpos($response, 'updated successfully') !== false) {
+        header("Location: family.php?success=" . urlencode($response));
+    } else {
+        header("Location: family.php?error=" . urlencode($response));
+    }
 }
 
-$passive_income = ($positive_cashflow - $negative_cashflow);
+// Check if category ID is passed for deletion
+if (isset($_GET['delete_id'])) {
+    $id = mysqli_real_escape_string($conn, $_GET['delete_id']);
 
+    // Call function to delete category
+    $result = deleteFinancialCategory($conn, $id, $family_id);
 
-// for adding transaction
-if (isset($_POST['add_transaction'])) {
-  // Retrieve and sanitize input values
-  $transaction_user = $conn->real_escape_string($_POST['user']);
-  $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
-  $time = !empty($_POST['time']) ? $conn->real_escape_string($_POST['time']) : date('Y/m/d H:i:s');
-  $category = $conn->real_escape_string($_POST['category']) ;
-
-
-  if (isset($_POST['note'])){
-    $cat_note = $conn->real_escape_string($_POST['note']);
-    // transaction_item,
-     // SQL query with parent_category_id handling
-    $querytransaction = "INSERT INTO transactions (category_id, user_id, total_amount, transaction_time,note) 
-    VALUES ($category, $transaction_user, '$amount', '$time', '$cat_note')";
-
-    $querybudgettransaction = "UPDATE budget SET budget_amount_remaining= (budget_amount-$amount), note = '$cat_note' WHERE category_id=$category";
-    $conn->query($querybudgettransaction);
-
-   
-  }else{
-        // SQL query with parent_category_id handling
-    $querytransaction = "INSERT INTO transactions (category_id, user_id, total_amount, transaction_time) 
-    VALUES ($category, $transaction_user, '$amount', '$time')";
-
-    $querybudgettransaction = "UPDATE budget SET budget_amount_remaining= (budget_amount-$amount) WHERE category_id=$category";
-    $conn->query($querybudgettransaction);
-  }
-
-  
-
-  // Execute the query and check for errors
-  if ($conn->query($querytransaction)) {
-      echo "Category added successfully!";
-  } else {
-      echo "Error: " . $conn->error;
-  }
- // Redirect to the same page to prevent form resubmission on refresh
-      header("Location: " . $_SERVER['PHP_SELF']);
-      exit();
+    // Provide success or error feedback
+    if ($result) {
+        header("Location: " . $_SERVER['PHP_SELF']);
+    } else {
+        header("Location: " . $_SERVER['PHP_SELF']);
+    }
 }
 
 
+  // Handle add transaction form submission
+  if (isset($_POST['add_transaction'])) {
+      $transaction_user = $conn->real_escape_string($_POST['user']);
+      $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
+      $time = !empty($_POST['time']) ? $conn->real_escape_string($_POST['time']) : date('Y/m/d H:i:s');
+      $category = $conn->real_escape_string($_POST['category']);
+      $note = $_POST['note'] ?? '';
 
-// for adding budget
-if (isset($_POST['add_budget'])) {
-  // Retrieve and sanitize input values
-  $budget_user = $conn->real_escape_string($_POST['user']);
-  // $item_name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : 'unknown';
-  $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
-
-
-   // Extract the month name from the 'YYYY-MM' input
-   if (!empty($_POST['month'])) {
-    $month_input = $_POST['month']; // e.g., '2024-10'
-    $month = date('F', strtotime($month_input)); // Converts to 'October'
-} else {
-    $month = date('F'); // Current month name if no input
-}
-
-  $category = $conn->real_escape_string($_POST['category']) ;
-
-
-  if (isset($_POST['note'])){
-    $cat_note = $conn->real_escape_string($_POST['note']);
-    // budget_item,
-     // SQL query with parent_category_id handling
-    $querybudget = "INSERT INTO budget (category_id, user_id, budget_amount, budget_amount_remaining, budget_month,note) 
-    VALUES ($category, $budget_user, '$amount', '$amount', '$month', '$cat_note')";
-  }else{
-        // SQL query with parent_category_id handling
-    $querybudget = "INSERT INTO budget (category_id, user_id, budget_amount, budget_amount_remaining, budget_month) 
-    VALUES ($category, $budget_user, '$amount', '$amount','$month')";
-  }
-
-  // Execute the query and check for errors
-  if ($conn->query($querybudget)) {
-      echo "Category added successfully!";
-  } else {
-      echo "Error: " . $conn->error;
-  }
- // Redirect to the same page to prevent form resubmission on refresh
-      header("Location: " . $_SERVER['PHP_SELF']);
-      exit();
-}
-
-
-// for total income sum
-$total_income =$passive_income + $only_income;
-
-
-// for adding resource
-if (isset($_POST['add_resource'])) {
-  
-  // Retrieve and sanitize input values
-  $transaction_user = $conn->real_escape_string($_POST['user']);
-  $item_name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : 'unknown';
-  $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
-  $time = !empty($_POST['time']) ? $conn->real_escape_string($_POST['time']) : date('Y/m/d H:i:s');
-  $category = $conn->real_escape_string($_POST['category']) ;
-
-
-  if (isset($_POST['note'])){
-    $cat_note = $conn->real_escape_string($_POST['note']);
-    // transaction_item,
-     // SQL query with parent_category_id handling
-    $querytransaction = "INSERT INTO transactions (category_id, user_id, total_amount, transaction_time,note) 
-    VALUES ($category, $transaction_user, '$amount', '$time', '$cat_note')";
-
-    $queryresource = "INSERT INTO resources (item_name, item_price, user_id, category_id,item_description) 
-    VALUES ('$item_name', '$amount', $transaction_user, $category, '$cat_note')";
-    $conn->query($queryresource);
-  }else{
-        // SQL query with parent_category_id handling
-    $querytransaction = "INSERT INTO transactions (category_id, user_id, total_amount, transaction_time) 
-    VALUES ($category, $transaction_user, '$amount', '$time')";
-
-    $queryresource = "INSERT INTO resources (item_name, item_price, user_id, category_id) 
-    VALUES ('$item_name', '$amount', $transaction_user, $category)";
-    $conn->query($queryresource);
-  }
-
-  
-
-  // Execute the query and check for errors
-  if ($conn->query($querytransaction)) {
-      echo "Category added successfully!";
-  } else {
-      echo "Error: " . $conn->error;
-  }
- // Redirect to the same page to prevent form resubmission on refresh
-      header("Location: " . $_SERVER['PHP_SELF']);
-      exit();
-}
-
-
-
-
-
-
-$balance = $total_income - $total_expense;
-
-// Use a prepared statement to update the balance securely
-$query_profilebalance = "UPDATE users SET balance = ? WHERE id = ?";
-
-$stmt = $conn->prepare($query_profilebalance);
-if ($stmt) {
-    $stmt->bind_param('di', $balance, $user_id);  // 'd' for decimal, 'i' for integer
-    $stmt->execute();
-    $stmt->close();
-} else {
-    echo "Error: " . $conn->error;
-}
-
-
-
-
-// for adding website entry
-if (isset($_POST['add_website'])&& isset($_POST['url'])) {
-  
-  // Retrieve and sanitize input values
-  $website_user = $user_id;
-  $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : '';
-  $url = !empty($_POST['url']) ? $conn->real_escape_string($_POST['url']) : '';
-  $website_description = !empty($_POST['description']) ? $conn->real_escape_string($_POST['description']) : '';
-  $website_category = !empty($_POST['category']) ? $conn->real_escape_string($_POST['category']): 'Leisure' ;
-
-
-    $querywebsiteentry = "INSERT INTO favourite_sites (website_name, website_url, website_description, website_category, website_user) 
-    VALUES ('$name', '$url', '$website_description', '$website_category', $website_user)";
-    $conn->query($querywebsiteentry);
-
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
-  }
-
-
-
-if (isset($_POST['update_resources'])) {
-  $resource_id = $_POST['resource'];
-
-  // Fetch the current values from the database
-  $query = "SELECT item_name, item_description, personal_notes, item_price, cashflow 
-            FROM resources WHERE resource_id = ?";
-  $stmt = $conn->prepare($query);
-  $stmt->bind_param('i', $resource_id);
-  $stmt->execute();
-  $result = $stmt->get_result();
-  $resource = $result->fetch_assoc();
-  $stmt->close();
-
-  // Assign values or keep the original ones if input is empty
-  $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : $resource['item_name'];
-  $description = !empty($_POST['description']) ? $conn->real_escape_string($_POST['description']) : $resource['item_description'];
-  $notes = !empty($_POST['notes']) ? $conn->real_escape_string($_POST['notes']) : $resource['personal_notes'];
-  $price = !empty($_POST['price']) ? $conn->real_escape_string($_POST['price']) : $resource['item_price'];
-  $cashflow = !empty($_POST['cashflow']) ? $conn->real_escape_string($_POST['cashflow']) : $resource['cashflow'];
-
-  // SQL query to update the resource
-  $updateQuery = "UPDATE resources 
-                  SET item_name = ?, item_description = ?, personal_notes = ?, 
-                      item_price = ?, cashflow = ? 
-                  WHERE resource_id = ?";
-
-  $stmt = $conn->prepare($updateQuery);
-  if ($stmt) {
-      $stmt->bind_param('ssssdi', $name, $description, $notes, $price, $cashflow, $resource_id);
-
-      if ($stmt->execute()) {
-          echo "Resource updated successfully!";
-      } else {
-          echo "Error: " . $stmt->error;
+      if (addTransaction($conn, $family_id, $category, $transaction_user, $amount, $time, $note)) {
+        echo "<div class='alert alert-success'>Transaction added successfully!</div>";
+          header("Location: " . $_SERVER['PHP_SELF']);
+          exit();
       }
-      $stmt->close();
-  } else {
-      echo "Error: " . $conn->error;
   }
 
-  header("Location: " . $_SERVER['PHP_SELF']);
-      exit();
-}
+  // Handle add budget form submission
+  if (isset($_POST['add_budget'])) {
+      $budget_user = $conn->real_escape_string($_POST['user']);
+      $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
+      $month_input = $_POST['month'] ?? '';
+      $month = $month_input ? date('F', strtotime($month_input)) : date('F');
+      $category = $conn->real_escape_string($_POST['category']);
+      $cat_note = $_POST['note'] ?? '';
+
+      if (addBudget($conn, $family_id, $category, $budget_user, $amount, $month, $cat_note)) {
+          echo "Budget added successfully!";
+          header("Location: " . $_SERVER['PHP_SELF']);
+          exit();
+      }
+  }
+
+  // Handle add resource form submission
+  if (isset($_POST['add_resource'])) {
+      $resource_user = $conn->real_escape_string($_POST['user']);
+      $item_name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : 'unknown';
+      $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
+      $time = !empty($_POST['time']) ? $conn->real_escape_string($_POST['time']) : date('Y/m/d H:i:s');
+      $category = $conn->real_escape_string($_POST['category']);
+      $cat_note = $_POST['note'] ?? '';
+
+      if (addResource($conn, $family_id, $category, $resource_user, $item_name, $amount, $time, $cat_note)) {
+          echo "Resource added successfully!";
+          header("Location: " . $_SERVER['PHP_SELF']);
+          exit();
+      }
+  }
 
 
 
-// for only total income
-$query = "SELECT sum(total_amount) as number_income FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'income'";
 
-$resultsincomeno= $conn->query($query);
-if ($resultsincomeno -> num_rows > 0 ){
-    $row = $resultsincomeno -> fetch_assoc();
-    $only_income = $row['number_income'];
-}
+  // Handle update resource form submission
+  if (isset($_POST['update_resources'])) {
+      $resource_id = $_POST['resource'];
+      $resource = getResourceDetails($conn, $resource_id);
 
+      $name = $_POST['name'] ?? $resource['item_name'];
+      $description = $_POST['description'] ?? $resource['item_description'];
+      $notes = $_POST['notes'] ?? $resource['personal_notes'];
+      $price = $_POST['price'] ?? $resource['item_price'];
+      $cashflow = $_POST['cashflow'] ?? $resource['cashflow'];
 
-
-// for total positive cashflow
-$query = "SELECT sum(abs(cashflow)) as positive_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'asset'";
-
-$resultspositive_cashflow = $conn->query($query);
-if ($resultspositive_cashflow -> num_rows > 0 ){
-    $row = $resultspositive_cashflow -> fetch_assoc();
-    $positive_cashflow = $row['positive_cashflow'];
-}
-// for total negative cashflow
-$query = "SELECT sum(abs(cashflow)) as negative_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'liability'";
-
-$resultsnegative_cashflow = $conn->query($query);
-if ($resultsnegative_cashflow -> num_rows > 0 ){
-    $row = $resultsnegative_cashflow -> fetch_assoc();
-    $negative_cashflow = $row['negative_cashflow'];
-}
-
-// for only total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'expense'";
-
-$resultsexpenseno= $conn->query($query);
-if ($resultsexpenseno -> num_rows > 0 ){
-    $row = $resultsexpenseno -> fetch_assoc();
-    $only_expense = $row['number_expense'];
-}
-// for total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND (fc.category = 'expense' OR fc.category = 'asset' OR fc.category = 'liability')";
-
-$resultsexpensetotal= $conn->query($query);
-if ($resultsexpensetotal -> num_rows > 0 ){
-    $row = $resultsexpensetotal -> fetch_assoc();
-    $total_expense = $row['number_expense'];
-}
-
-$passive_income = ($positive_cashflow - $negative_cashflow);
+      if (updateResource($conn, $resource_id, $name, $description, $notes, $price, $cashflow)) {
+          echo "Resource updated successfully!";
+          header("Location: " . $_SERVER['PHP_SELF']);
+          exit();
+      }
+  }
 
 
 
-if (isset($_POST['add_dish'])) {
-    // Retrieve and sanitize input values
-    $user = $user_id;
+
+  if (isset($_POST['add_dish'])) {
     $day = !empty($_POST['day']) ? $conn->real_escape_string($_POST['day']) : null;
     $time = !empty($_POST['time']) ? $conn->real_escape_string($_POST['time']) : null;
     $dish_name = !empty($_POST['dish_name']) ? $conn->real_escape_string($_POST['dish_name']) : '';
 
-    // Check if day and time were provided
-    if (!$day || !$time) {
-        echo "Error: Please provide both day and time.";
-        exit();
-    }
-
-    // JSON object for dish details
-    $dish_details = json_encode([
+    // Dish details array (without encoding, since addDish will encode it)
+    $dish_details = [
         'dish_category' => '',
         'preparation_process' => '',
         'dietary_restrictions' => '',
@@ -445,187 +245,95 @@ if (isset($_POST['add_dish'])) {
         ],
         'day' => $day,
         'time' => $time
-    ], JSON_UNESCAPED_SLASHES);
+    ];
 
-    // Insert query
-    $querydishentry = "INSERT INTO menu (dish_details, dish_name, user_id) 
-                       VALUES ('$dish_details', '$dish_name', $user)";
-
-    if ($conn->query($querydishentry) === TRUE) {
-        // Redirect to refresh the page after insertion
+    // Attempt to add the dish and check the result
+    if (addDish($conn, $family_id, $dish_name, $day, $time, $dish_details)) {
+        // Redirect on success
         header("Location: " . $_SERVER['PHP_SELF']);
         exit();
-    } else {
-        echo "Error: " . $querydishentry . "<br>" . $conn->error;
-    }
+    } 
 }
 
 
 
 
-// for adding ingredient 
+// Example usage of addIngredient function
 if (isset($_POST['add_ingredient'])) {
-  
-  // Retrieve and sanitize input values
-  $ingredient_user = $user_id;
-  $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : '';
-  $price = !empty($_POST['price']) ? $conn->real_escape_string($_POST['price']) : '0.00';
-  $quantity = !empty($_POST['quantity']) ? $conn->real_escape_string($_POST['quantity']) : 0;
-
-
-    $queryingrediententry = "INSERT INTO inventory (ingredient_name, price_per_unit, total_quantity, user_id) 
-    VALUES ('$name', '$price', $quantity, $ingredient_user)";
-    $conn->query($queryingrediententry);
-
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
+  if (addIngredient($conn, $family_id, $_POST['name'], $_POST['price'], $_POST['quantity'])) {
+      header("Location: " . $_SERVER['PHP_SELF']);
+      exit();
+  } else {
+      echo "Error adding ingredient.";
   }
+}
 
-// for total income sum
-$total_income =$passive_income + $only_income;
-
-
-// for adding diary entry
-if (isset($_POST['add_entry'])&& isset($_POST['entry'])) {
-  
-  // Retrieve and sanitize input values
-  $diary_owner = $user_id;
-  $entry = !empty($_POST['entry']) ? $conn->real_escape_string($_POST['entry']) : '';
-  $date = !empty($_POST['date']) ? $conn->real_escape_string($_POST['date']) : date('d/m/y');
-  $entry_title = !empty($_POST['title']) ? $conn->real_escape_string($_POST['title']): '' ;
-
-
-    $querydiaryentry = "INSERT INTO Diary (diary_title, diary_entry, entry_date, diary_owner) 
-    VALUES ('$entry_title', '$entry', '$date', $diary_owner)";
-    $conn->query($querydiaryentry);
-
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
+// Example usage of addDiaryEntry function
+if (isset($_POST['add_entry']) && isset($_POST['entry'])) {
+  if (addDiaryEntry($conn, $family_id, $_POST['title'], $_POST['entry'], $_POST['date'])) {
+      header("Location: " . $_SERVER['PHP_SELF']);
+      exit();
+  } else {
+      echo "Error adding diary entry.";
   }
+}
 
-
-// for adding website entry
-if (isset($_POST['add_website'])&& isset($_POST['url'])) {
-  
-  // Retrieve and sanitize input values
-  $website_user = $user_id;
-  $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : '';
-  $url = !empty($_POST['url']) ? $conn->real_escape_string($_POST['url']) : '';
-  $website_description = !empty($_POST['description']) ? $conn->real_escape_string($_POST['description']) : '';
-  $website_category = !empty($_POST['category']) ? $conn->real_escape_string($_POST['category']): 'Leisure' ;
-
-
-    $querywebsiteentry = "INSERT INTO favourite_sites (website_name, website_url, website_description, website_category, website_user) 
-    VALUES ('$name', '$url', '$website_category', '$website_description', $website_user)";
-    $conn->query($querywebsiteentry);
-
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
+// Example usage of addFavoriteWebsite function
+if (isset($_POST['add_website']) && isset($_POST['url'])) {
+  if (addFavoriteWebsite($conn, $family_id, $_POST['name'], $_POST['url'], $_POST['description'], $_POST['category'])) {
+      header("Location: " . $_SERVER['PHP_SELF']);
+      exit();
+  } else {
+      echo "Error adding favorite website.";
   }
-
-
-
-$balance = $total_income - $total_expense;
-
-// Use a prepared statement to update the balance securely
-$query_profilebalance = "UPDATE users SET balance = ? WHERE id = ?";
-
-$stmt = $conn->prepare($query_profilebalance);
-if ($stmt) {
-    $stmt->bind_param('di', $balance, $user_id);  // 'd' for decimal, 'i' for integer
-    $stmt->execute();
-    $stmt->close();
-} else {
-    echo "Error: " . $conn->error;
 }
 
 
 
-
-$user_id = $_SESSION['user_id'];
-
+// Handle task submission form
 if (isset($_POST['submit'])) {
-// Assign form inputs to variables or default to NULL
-$task_name = !empty($_POST['name']) ? $_POST['name'] : null;
-$task_description = !empty($_POST['description']) ? $_POST['description'] : null;
-$task_deadline = !empty($_POST['deadline']) ? $_POST['deadline'] : null;
-$task_duration = !empty($_POST['duration']) ? $_POST['duration'] : null;
-$task_assigner = !empty($_POST['assigner']) ? $_POST['assigner'] : null;
+  $task_name = $_POST['name'] ?? null;
+  $task_description = $_POST['description'] ?? null;
+  $task_deadline = $_POST['deadline'] ?? null;
+  $task_duration = $_POST['duration'] ?? null;
+  $task_assigner = $_POST['assigner'] ?? null;
+  $file_upload_path = null;
 
-// Handle file upload for task
-if (isset($_FILES['file']['name']) && !empty($_FILES['file']['name'])) {
-    $file_name = $_FILES['file']['name'];
-    $tmp_name = $_FILES['file']['tmp_name'];
-    $error = $_FILES['file']['error'];
+  // Handle file upload
+  if (isset($_FILES['file']['name']) && !empty($_FILES['file']['name'])) {
+      $file_name = $_FILES['file']['name'];
+      $tmp_name = $_FILES['file']['tmp_name'];
+      $error = $_FILES['file']['error'];
 
-    if ($error === 0) {
-        $file_ex = pathinfo($file_name, PATHINFO_EXTENSION);
-        $file_ex_to_lc = strtolower($file_ex);
+      if ($error === 0) {
+          $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+          $allowed_exts = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
 
-        // Allowed file extensions (adjust as needed)
-        $allowed_exs = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
-        if (in_array($file_ex_to_lc, $allowed_exs)) {
-            $new_file_name = uniqid('', true) . '.' . $file_ex_to_lc.'-'.$user_id;
-            $file_upload_path = 'plugins/tasks/file' . $new_file_name;
+          if (in_array($file_ext, $allowed_exts)) {
+              $new_file_name = uniqid('', true) . '.' . $file_ext . '-' . $family_id;
+              $file_upload_path = 'plugins/tasks/file/' . $new_file_name;
 
-            // Move the uploaded file to the specified directory
-            move_uploaded_file($tmp_name, $file_upload_path);
+              if (!move_uploaded_file($tmp_name, $file_upload_path)) {
+                  echo "Error moving uploaded file.";
+              }
+          } else {
+              echo "Invalid file type.";
+              exit();
+          }
+      } else {
+          echo "File upload error!";
+          exit();
+      }
+  }
 
-            // Prepare the SQL query with placeholders
-            $query = "INSERT INTO tasks (task_name, deadline, task_duration, task_description, task_status, task_assigner, task_resource_filename) 
-                      VALUES (?, ?, ?, ?, 'PENDING', ?, ?)";
-
-            // Prepare the statement using the MySQLi connection
-            $stmt = $conn->prepare($query);
-
-            // Bind parameters
-            $stmt->bind_param("ssssis", $task_name, $task_deadline, $task_duration, $task_description, $task_assigner, $new_file_name);
-
-            // Execute the statement and check if it was successful
-            if ($stmt->execute()) {
-                echo "New task created successfully!";
-            } else {
-                echo "Error: " . $stmt->error;
-            }
-
-            // Redirect to the same page to prevent form resubmission on refresh
-            header("Location: " . $_SERVER['PHP_SELF']);
-            exit();
-        } else {
-            $em = "You can't upload files of this type";
-            header("Location: " . $_SERVER['PHP_SELF'] . "?error=$em");
-            exit();
-        }
-    } else {
-        $em = "Unknown error occurred!";
-        header("Location: " . $_SERVER['PHP_SELF'] . "?error=$em");
-        exit();
-    }
-} else {
-    // Insert the task without a file if no file is uploaded
-    $query = "INSERT INTO tasks (task_name, deadline, task_duration, task_description, task_status, task_assigner) 
-              VALUES (?, ?, ?, ?, 'PENDING', ?)";
-
-    // Prepare the statement using the MySQLi connection
-    $stmt = $conn->prepare($query);
-
-    // Bind parameters (without file)
-    $stmt->bind_param("ssssi", $task_name, $task_deadline, $task_duration, $task_description, $task_assigner);
-
-    // Execute the statement and check if it was successful
-    if ($stmt->execute()) {
-        echo "New task created successfully!";
-    } else {
-        echo "Error: " . $stmt->error;
-    }
-
-    // Redirect to the same page to prevent form resubmission on refresh
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
-}
+  // Use existing addTask function to add task
+  if (addTask($conn, $family_id, $task_name, $task_description, $task_deadline, $task_duration,  $task_assigner, $file_upload_path)) {
+      echo "Task added successfully!";
+      header("Location: " . $_SERVER['PHP_SELF']);
+      exit();
+  } else {
+      echo "Error adding task.";
+  }
 }
 
 
@@ -633,7 +341,7 @@ if (isset($_FILES['file']['name']) && !empty($_FILES['file']['name'])) {
 
 
 // for  tasks  No
-$query = "SELECT count(*) as number_tasks FROM tasks WHERE task_status = 'PENDING' and (task_assigner = $user_id OR task_assignee = $user_id)";
+$query = "SELECT count(*) as number_tasks FROM tasks WHERE task_status = 'PENDING' and (task_assigner = $family_id OR task_assignee = $family_id)";
 
 $resultstasks_no = $conn->query($query);
 if ($resultstasks_no -> num_rows > 0 ){
@@ -644,46 +352,27 @@ if ($resultstasks_no -> num_rows > 0 ){
 
 
 // for  tasks 
-$query = "SELECT * FROM tasks WHERE task_status = 'PENDING' and (task_assigner = $user_id OR task_assignee = $user_id)";
-
-$resultstasks = $conn->query($query);
+$resultstasks = getTasksByStatus($conn, $family_id, 'PENDING');
 
 
-if(isset($_SESSION['message'])){
-    echo $_SESSION['message'];
-    unset($_SESSION['message']);
-}
+$resultsincome = getFinancialData($conn, 'transactions', $family_id, 'income');
+$resultsexpense = getFinancialData($conn, 'transactions', $family_id, 'expense');
+$resultsassets = getFinancialData($conn, 'resources', $family_id, 'assets');
+$resultsliabilities = getFinancialData($conn, 'resources', $family_id, 'liabilities');
+
+
 
 // for completed  tasks 
-$query = "SELECT * FROM tasks WHERE task_status = 'COMPLETED' and (task_assigner = $user_id OR task_assignee = $user_id) ";
 
-$resultstasks_completed = $conn->query($query);
+$resultstasks_completed = getTasksByStatus($conn, $family_id, 'COMPLETED');
 
+  }
 
-
-
-// for  user 
-$query = "SELECT * FROM users WHERE id = $user_id";
-
-$results = $conn->query($query);
-
-if ($results -> num_rows > 0){
-    while($row = $results->fetch_assoc()){
-        $username = $row['username'];
-        $profile_pic = $row['profile_pic'];
-    }
-}
+// Display flash message
+displaySessionMessage();
 
 
 
-
-
-
-
-if(isset($_SESSION['message'])){
-    echo $_SESSION['message'];
-    unset($_SESSION['message']);
-}
 }
 ?>
 
@@ -725,19 +414,23 @@ if(isset($_SESSION['message'])){
         <!-- ============================================================== -->
         <!-- Topbar header - style you can find in pages.scss -->
         <!-- ============================================================== -->
-        <header class="topbar" data-navbarbg="skin5">
+        <header class="topbar bg-warning" data-navbarbg="skin5">
             <nav class="navbar top-navbar navbar-expand-md navbar-dark">
                 <div class="navbar-header" data-logobg="skin6">
                   
                     <!-- ============================================================== -->
                     <!-- toggle and nav items -->
                     <!-- ============================================================== -->
+
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
                     
                 </div>
                 <!-- ============================================================== -->
                 <!-- End Logo -->
                 <!-- ============================================================== -->
-                <div class="navbar-collapse collapse bg-warning" id="navbarSupportedContent" >
+                <div class="navbar-collapse collapse" id="navbarSupportedContent" >
                    
                     <!-- ============================================================== -->
                     <!-- Right side toggle and nav items -->
@@ -762,7 +455,7 @@ if(isset($_SESSION['message'])){
 
                             <div class="dropdown">
                             <a class="btn  dropdown-toggle profile-pic" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <img src="plugins/images/users/<?php echo $profile_pic?>" alt="user-img" width="45" height="45"
+                            <img src="plugins/images/users/<?php echo $user_profile_pic?>" alt="user-img" width="45" height="45"
                             class="img-circle"><span class="text-white font-medium"><?php echo $username ?></span>
                             </a>
 
@@ -770,7 +463,7 @@ if(isset($_SESSION['message'])){
                               <?php if(isset($user_id)) {?>
                               <div id="left" class="d-flex justify-content-center">
                                     <a class="btn profile-pic-enlarged" href="#">
-                                  <img src="plugins/images/users/<?php echo $profile_pic?>" alt="user-img" width="60" height="60"
+                                  <img src="plugins/images/users/<?php echo $user_profile_pic?>" alt="user-img" width="60" height="60"
                                   class="img-circle"><span class="text-bg-white font-medium  d-flex justify-content-center"><?php echo $username ?>
                                    (<?php echo $cash ?> GH₵)</span></a>
                               </div>
@@ -799,7 +492,7 @@ if(isset($_SESSION['message'])){
         
         <div class="page-breadcrumb bg-secondary">
           
-        <?php if(isset($_SESSION['user_id'])){
+        <?php if(isset($family_id)){
 ?>
                     <div class="row align-items-center">
                         <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
@@ -840,7 +533,7 @@ if(isset($_SESSION['message'])){
                     <!-- /.col-lg-12 -->
                 </div>
                 
-        <?php if(isset($user_id)) {?>
+        <?php if(isset($family_id)) {?>
 
             
 
@@ -866,7 +559,7 @@ if(isset($_SESSION['message'])){
                     <button class="nav-link" id="pills-websites-tab" data-bs-toggle="pill" data-bs-target="#pills-websites" type="button" role="tab" aria-controls="pills-websites" aria-selected="false">Favourite websites</button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="pills-saturday-tab" data-bs-toggle="pill" data-bs-target="#pills-saturday" type="button" role="tab" aria-controls="pills-saturday" aria-selected="false">Saturday</button>
+                    <button class="nav-link" id="pills-famprofile-tab" data-bs-toggle="pill" data-bs-target="#pills-famprofile" type="button" role="tab" aria-controls="pills-famprofile" aria-selected="false">Family Profile</button>
                 </li>
                 </ul>
 
@@ -878,164 +571,110 @@ if(isset($_SESSION['message'])){
             </div>
 
             <div class="tab-pane fade" id="pills-menu" role="tabpanel" aria-labelledby="pills-menu-tab" tabindex="0">
+    <h3 class="text-primary text-center">Menu</h3>
 
-            <h3 class="text-primary text-center" >Menu</h3>
+    <table class="table table-bordered border-primary">
+    <thead>
+        <tr>
+            <th scope="col">Days</th>
+            <th scope="col">Morning</th>
+            <th scope="col">Afternoon</th>
+            <th scope="col">Evening</th>
+        </tr>
+    </thead>
+    <tbody>
+        <?php
+        // Days of the week and meal times
+        $days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        $times = ["morning", "afternoon", "evening"];
 
-
-                    
-          <table class="table table-bordered border-primary">
-          <thead>
-              <tr>
-              <th scope="col">Days</th>
-              <th scope="col">Morning</th>
-              <th scope="col">Afternoon</th>
-              <th scope="col">Evening</th>
-              </tr>
-          </thead>
-
-
-          <?php
-          // Days of the week and meal times
-          $days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-          $times = ["morning", "afternoon", "evening"];
-          ?>
-
-          <tbody>
-          <?php foreach ($days as $day): ?>
-          <tr>
-          <th scope="row"><?= htmlspecialchars($day) ?></th>
-          <?php foreach ($times as $time): ?>
-              <td class="text-center">
-                  <?php
-                  $query = "
-                      SELECT dish_name FROM menu 
-                      WHERE user_id = $user_id 
-                      AND JSON_UNQUOTE(JSON_EXTRACT(dish_details, '$.day')) = '$day' 
-                      AND JSON_UNQUOTE(JSON_EXTRACT(dish_details, '$.time')) = '$time'";
-
-                  $result = $conn->query($query);
-
-                  if ($result->num_rows > 0) {
-                      while ($row = $result->fetch_assoc()) {
-                          echo '<a href="#"  data-bs-toggle="modal"  data-bs-target="#update_menu_modal" data-bs-update-info="' . htmlspecialchars($day) . ',' . htmlspecialchars($time) . ',' . htmlspecialchars($row['dish_name']) . '"> ' 
-                              . htmlspecialchars($row['dish_name']) . 
-                          ' </a>';
-                      }
-                  } else {
-                      echo '<a href="#" 
-                          data-bs-toggle="modal" 
-                          data-bs-target="#add_menu_modal" 
-                          data-bs-add-info="' . htmlspecialchars($day) . ',' . htmlspecialchars($time) . '"> + </a>';
-                  }
-                  ?>
-              </td>
-          <?php endforeach; ?>
-          </tr>
-          <?php endforeach; ?>
-          </tbody>
+        foreach ($days as $day): ?>
+            <tr>
+                <th scope="row"><?= htmlspecialchars($day) ?></th>
+                <?php foreach ($times as $time): ?>
+                    <td class="text-center">
+                        <?php displayDishes($conn, $family_id, $day, $time); ?>
+                    </td>
+                <?php endforeach; ?>
+            </tr>
+        <?php endforeach; ?>
+    </tbody>
+</table>
 
 
-          </table>
+    <!-- Update menu modal -->
+    <div class="modal fade" id="update_menu_modal" tabindex="-1" aria-labelledby="updateMenuLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="updateMenuLabel">Update Dish</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form action="" method="POST">
+                        <input type="hidden" name="day" id="update-modal-day">
+                        <input type="hidden" name="time" id="update-modal-time">
+                        <div class="mb-3">
+                            <label for="dish_name" class="form-label">Dish Name</label>
+                            <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Update Dish</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <!-- Add Menu Modal -->
+    <div class="modal fade" id="add_menu_modal" tabindex="-1" aria-labelledby="addMenuLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addMenuLabel">Add Menu</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form action="" method="POST">
+                        <input type="hidden" name="day" id="add-modal-day">
+                        <input type="hidden" name="time" id="add-modal-time">
+                        <input type="hidden" name="user" value="<?php echo $family_id; ?>">
 
-          <!-- Update menu modal -->
-          <div class="modal fade" id="update_menu_modal" tabindex="-1" aria-labelledby="updateMenuLabel" aria-hidden="true">
-              <div class="modal-dialog">
-                  <div class="modal-content">
-                      <div class="modal-header">
-                          <h5 class="modal-title" id="updateMenuLabel">Update Dish</h5>
-                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                      </div>
-                      <div class="modal-body">
-                          <form action="" method="POST">
-                              <input type="hidden" name="day" id="update-modal-day">
-                              <input type="hidden" name="time" id="update-modal-time">
-                              <div class="mb-3">
-                                  <label for="dish_name" class="form-label">Dish Name</label>
-                                  <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                              </div>
-                              <div class="mb-3">
-                                  <label for="dish_name" class="form-label">Dish Name</label>
-                                  <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                              </div>
-                              <div class="mb-3">
-                                  <label for="dish_name" class="form-label">Dish Name</label>
-                                  <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                              </div>
-                              <div class="mb-3">
-                                  <label for="dish_name" class="form-label">Dish Name</label>
-                                  <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                              </div>
-                              <div class="mb-3">
-                                  <label for="dish_name" class="form-label">Dish Name</label>
-                                  <input type="text" class="form-control" name="dish_name" id="update-dish-name" required>
-                              </div>
-                              <button type="submit" class="btn btn-success w-100">Update Dish</button>
-                          </form>
-                      </div>
-                  </div>
-              </div>
-          </div>
+                        <div class="mb-3">
+                            <label for="dish_name" class="form-label">Dish Name</label>
+                            <input type="text" class="form-control" name="dish_name" id="dish_name" required>
+                        </div>
 
+                        <input type="submit" class="btn btn-primary w-100" name="add_dish" value="Add Dish">
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                          
-          <!-- Add Menu Modal -->
-          <div class="modal fade" id="add_menu_modal" tabindex="-1" aria-labelledby="addMenuLabel" aria-hidden="true">
-          <div class="modal-dialog">
-          <div class="modal-content">
-          <div class="modal-header">
-              <h5 class="modal-title" id="addMenuLabel">Add Menu</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-              <form action="" method="POST">
-                  <input type="hidden" name="day" id="add-modal-day"> <!-- Corrected ID -->
-                  <input type="hidden" name="time" id="add-modal-time"> <!-- Corrected ID -->
-                  <input type="hidden" name="user" value="<?php echo $user_id; ?>">
+    <script>
+    const addMenuModal = document.getElementById('add_menu_modal');
+    const updateMenuModal = document.getElementById('update_menu_modal');
 
-                  <div class="mb-3">
-                      <label for="dish_name" class="form-label">Dish Name</label>
-                      <input type="text" class="form-control" name="dish_name" id="dish_name" required>
-                  </div>
+    // Add Menu Modal: Populate hidden fields with day and time
+    addMenuModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const info = button.getAttribute('data-bs-add-info').split(',');
+        document.getElementById('add-modal-day').value = info[0];
+        document.getElementById('add-modal-time').value = info[1];
+    });
 
-                  <input type="submit" class="btn btn-primary w-100" name="add_dish" value="Add Dish">
-              </form>
-          </div>
-          </div>
-          </div>
-          </div>
+    // Update Menu Modal: Populate hidden fields and input with existing data
+    updateMenuModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const info = button.getAttribute('data-bs-update-info').split(',');
+        document.getElementById('update-modal-day').value = info[0];
+        document.getElementById('update-modal-time').value = info[1];
+        document.getElementById('update-dish-name').value = info[2];
+    });
+</script>
 
+</div>
 
-
-
-          <script>
-          const addMenuModal = document.getElementById('add_menu_modal');
-          const updateMenuModal = document.getElementById('update_menu_modal');
-
-          // Add Menu Modal: Populate hidden fields with day and time
-          addMenuModal.addEventListener('show.bs.modal', function (event) {
-          const button = event.relatedTarget;
-          const info = button.getAttribute('data-bs-add-info').split(',');
-          document.getElementById('add-modal-day').value = info[0];
-          document.getElementById('add-modal-time').value = info[1];
-          });
-          console.log(info);
-
-          // Update Menu Modal: Populate hidden fields and input with existing data
-          updateMenuModal.addEventListener('show.bs.modal', function (event) {
-          const button = event.relatedTarget;
-          const info = button.getAttribute('data-bs-update-info').split(',');
-          document.getElementById('update-modal-day').value = info[0];
-          document.getElementById('update-modal-time').value = info[1];
-          document.getElementById('update-dish-name').value = info[2];
-          });
-
-
-
-          </script>
-
-
-  </div>
 
   <div class="tab-pane fade" id="pills-stocks" role="tabpanel" aria-labelledby="pills-stocks-tab" tabindex="0">
               <?php 
@@ -1117,7 +756,7 @@ if(isset($_SESSION['message'])){
                 <legend class="fw-bold text-primary">Add ingredients</legend>
 
                 <form action="" method="post">
-                <input type="hidden" name="user" id="user" value="<?php echo $user_id; ?>">
+                <input type="hidden" name="user" id="user" value="<?php echo $family_id; ?>">
 
                 <div class="col-12 mb-3">
                     <div class="input-group">
@@ -1429,7 +1068,7 @@ if(isset($_SESSION['message'])){
                   </div>
   </div>
   <div class="tab-pane fade" id="pills-finances" role="tabpanel" aria-labelledby="pills-finances-tab" tabindex="0">
-  <div class="accordion " id="accordionExample">
+    <div class="accordion " id="accordionExample">
               <div class="accordion-item" >
                   <h2 class="accordion-header">
                     <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
@@ -1488,7 +1127,7 @@ if(isset($_SESSION['message'])){
                                           <tbody>
                                               <?php 
                                               $previous_month = date('m', strtotime('last month'));
-                                              while ($row = $resultstransaction->fetch_assoc()) {
+                                              while ($row = $resultsTransactions->fetch_assoc()) {
                                                   $transaction_month = date('m', strtotime($row['transaction_time']));
                                                   if ($transaction_month == $previous_month) { ?>
                                                       <tr class="bg-<?php echo $row['category'] == 'income' ? 'success' : 'danger'; ?>">
@@ -1520,8 +1159,8 @@ if(isset($_SESSION['message'])){
                                               <?php 
                                               $current_month = date('m', strtotime('this month'));
                                               // Reset the data pointer to fetch results again
-                                              $resultstransaction->data_seek(0); 
-                                              while ($row = $resultstransaction->fetch_assoc()) {
+                                              $resultsTransactions->data_seek(0); 
+                                              while ($row = $resultsTransactions->fetch_assoc()) {
                                                   $transaction_month = date('m', strtotime($row['transaction_time']));
                                                   if ($transaction_month == $current_month) { ?>
                                                       <tr class="bg-<?php echo $row['category'] == 'income' ? 'success' : 'danger'; ?>">
@@ -1572,7 +1211,7 @@ if(isset($_SESSION['message'])){
                             </tr>
                           </thead>
                           <tbody>
-                            <?php while ($row = $resultsresources->fetch_assoc()) { ?>
+                            <?php while ($row = $resultsResources->fetch_assoc()) { ?>
                               <tr 
                                 data-bs-toggle="modal" 
                                 data-bs-target="#update-resources-modal-<?php echo $row['resource_id']; ?>" 
@@ -1583,7 +1222,7 @@ if(isset($_SESSION['message'])){
                                   <?php echo $row['item_name']; ?>
                                 </th>
                                 <td class="text-bg-<?php echo ($row['category'] == 'asset') ? 'success' : 'danger'; ?>">
-                                  <?php echo $row['category']; ?>
+                                  <?php echo $row['item_description']; ?>
                                 </td>
                                 <td class="text-bg-<?php echo ($row['category'] == 'asset') ? 'success' : 'danger'; ?>">
                                   <?php echo number_format($row['item_price'], 2); ?>
@@ -1740,7 +1379,7 @@ if(isset($_SESSION['message'])){
                                       <?php 
                                               $previous_month = date('F', strtotime('first day of last month'));
 
-                                              while ($row = $resultsbudget->fetch_assoc()) {
+                                              while ($row = $resultsBudget->fetch_assoc()) {
                                                   $budget_month = $row['budget_month'];
                                                   if ($budget_month === $previous_month) { 
 
@@ -1808,7 +1447,7 @@ if(isset($_SESSION['message'])){
 
                               <?php
                                 // Reset the result set pointer for reuse
-                                $resultsbudget->data_seek(0);
+                                $resultsBudget->data_seek(0);
                                 ?>
 
                               <!-- This Month Tab -->
@@ -1822,7 +1461,7 @@ if(isset($_SESSION['message'])){
                                       <?php 
                                               $current_month = date('F');
 
-                                              while ($row = $resultsbudget->fetch_assoc()) {
+                                              while ($row = $resultsBudget->fetch_assoc()) {
                                                   $budget_month = $row['budget_month'];
   
                                                   if ($budget_month === $current_month) {
@@ -1902,8 +1541,8 @@ if(isset($_SESSION['message'])){
                 </div>
               </div>
             
-                  <div class="accordion-item">
-              <h2 class="accordion-header">
+              <div class="accordion-item">
+               <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour" aria-expanded="false" aria-controls="collapseFour">
                 <h2 class="text-center">Get business knowledge</h2>
                 </button>
@@ -1926,7 +1565,148 @@ if(isset($_SESSION['message'])){
                 </div>
               </div>
                 </div>
+        </div>
+
+         <!-- Transactions Modal -->
+<div class="modal fade" id="transactions-modal" tabindex="-1" aria-labelledby="transactions-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="transactions-modal-title">Transactions</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            <div class="modal-body">
+                <!-- Tab Navigation -->
+                <div class="nav" id="nav-tab" role="tablist">
+                    <button class="nav-item btn-warning my-2 rounded text-white active" id="nav-expense-tab" data-bs-toggle="tab" data-bs-target="#add_expense" type="button" role="tab" aria-controls="add_expense" aria-selected="true">Expense</button>
+                    <button class="nav-item btn-warning my-2 rounded text-white" id="nav-income-tab" data-bs-toggle="tab" data-bs-target="#add_income" type="button" role="tab" aria-controls="add_income" aria-selected="false">Income</button>
+                </div>
+
+                <hr>
+
+                <!-- Tab Content -->
+                <div class="tab-content" id="nav-tabContent">
+                    <!-- Expense Form -->
+                    <div class="tab-pane fade show active" id="add_expense" role="tabpanel" aria-labelledby="nav-expense-tab">
+                        <?php echo renderTransactionForm('expense', $user_id, $conn); ?>
+                    </div>
+                    
+                    <!-- Income Form -->
+                    <div class="tab-pane fade" id="add_income" role="tabpanel" aria-labelledby="nav-income-tab">
+                        <?php echo renderTransactionForm('income', $user_id, $conn); ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Resources Modal -->
+<div class="modal fade" id="resources-modal" tabindex="-1" aria-labelledby="resources-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="resources-modal-title">Resources</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Tab Navigation -->
+                <div class="nav" id="nav-tab" role="tablist">
+                    <button class="nav-item btn-warning my-2 rounded text-white" id="nav-asset-tab" data-bs-toggle="tab" data-bs-target="#asset" type="button" role="tab" aria-controls="asset" aria-selected="true">Assets</button>
+                    <button class="nav-item btn-warning my-2 rounded text-white" id="nav-liability-tab" data-bs-toggle="tab" data-bs-target="#liability" type="button" role="tab" aria-controls="liability" aria-selected="false">Liabilities</button>
+                </div>
+
+                <hr>
+
+                <!-- Tab Content -->
+                <div class="tab-content" id="nav-tabContent">
+                    <!-- Asset Form -->
+                    <div class="tab-pane fade show active" id="asset" role="tabpanel" aria-labelledby="nav-asset-tab">
+                        <?php echo renderResourceForm('asset', $user_id, $conn); ?>
+                    </div>
+                    
+                    <!-- Liability Form -->
+                    <div class="tab-pane fade" id="liability" role="tabpanel" aria-labelledby="nav-liability-tab">
+                        <?php echo renderResourceForm('liability', $user_id, $conn); ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Budget Modal -->
+<div class="modal fade" id="budget-modal" tabindex="-1" aria-labelledby="budget-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="budget-modal-title">Budgets</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="" method="post" style="width: 560px;">
+                    <input type="hidden" name="family_id" value="<?php echo $family_id; ?>">
+
+                    <!-- Amount Input -->
+                    <div class="col-8">
+                        <div class="input-group">
+                            <span class="input-group-text"><label for="amount">Enter Amount (GH₵)</label></span>
+                            <input type="number" name="amount" id="amount" required>
+                        </div>
+                    </div>
+
+                    <br>
+
+                    <!-- Category Select -->
+                    <div class="col-8">
+                        <div class="input-group">
+                            <span class="input-group-text"><label for="category">Select Category</label></span>
+                            <select id="category" class="form-select" name="category" required>
+                                <option value="">-- Select Category --</option>
+                                <?php
+                                // Fetch child categories of type "expense" for this family
+                                $expenseCategories = fetchExpenseCategories($conn, $family_id);
+                                foreach ($expenseCategories as $category) {
+                                    echo "<option value=\"{$category['category_id']}\">{$category['category_name']}</option>";
+                                }
+                                ?>
+                            </select>
+                        </div>
+                    </div>
+
+                    <br>
+
+                    <!-- Month Input -->
+                    <div class="col-8">
+                        <div class="input-group">
+                            <span class="input-group-text"><label for="month">Month</label></span>
+                            <input type="month" name="month" id="month" required>
+                        </div>
+                    </div>
+
+                    <br>
+
+                    <!-- Note Input -->
+                    <div class="col-8">
+                        <div class="input-group">
+                            <span class="input-group-text"><label for="note">Note</label></span>
+                            <textarea name="note" id="note"></textarea>
+                        </div>
+                    </div>
+
+                    <br>
+
+                    <!-- Submit Button -->
+                    <div class="d-flex justify-content-center">
+                        <input type="submit" class="btn btn-primary" id="add_budget" name="add_budget" value="Add Budget">
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 
   </div>
   <div class="tab-pane fade" id="pills-websites" role="tabpanel" aria-labelledby="pills-websites-tab" tabindex="0">
@@ -1969,7 +1749,7 @@ if(isset($_SESSION['message'])){
     <legend class="fw-bold text-primary">Add Favourite Website</legend>
 
     <form action="" method="post">
-        <input type="hidden" name="assigner" id="assigner" value="<?php echo $user_id; ?>">
+        <input type="hidden" name="assigner" id="assigner" value="<?php echo $family_id; ?>">
 
         <div class="col-12 mb-3">
             <div class="input-group">
@@ -2031,9 +1811,207 @@ if(isset($_SESSION['message'])){
                         
                      
   </div>
-  <div class="tab-pane fade" id="pills-saturday" role="tabpanel" aria-labelledby="pills-saturday-tab" tabindex="0">Saturday</div>
+  <div class="tab-pane fade" id="pills-famprofile" role="tabpanel" aria-labelledby="pills-famprofile-tab" tabindex="0">
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Family Profile Picture and Name Section -->
+            <div class="col-lg-4 col-xlg-3 col-md-12">
+                <div class="white-box">
+                    <div class="user-bg">
+                        <img width="100%" alt="family profile" src="plugins/images/family/<?php echo $family_profile_pic; ?>">
+                        <div class="overlay-box">
+                            <div class="user-content">
+                                <a href="javascript:void(0)">
+                                    <img src="<?php echo $family_profile_pic; ?>" class="thumb-lg img-circle" alt="family profile picture">
+                                </a>
+                                <h4 class="text-white mt-2"><?php echo $family_name; ?></h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="user-btm-box mt-5 d-md-flex justify-content-between">
+                        <div class="col-md-6 text-center">
+                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#financial-categories-modal">Manage Financial Categories</button>
+                        </div>
+                        <div class="col-md-6 text-center">
+                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#family-settings-modal">Family Settings</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Update Family Profile Form -->
+            <div class="col-lg-8 col-xlg-9 col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <form class="form-horizontal form-material" action="" method="POST" enctype="multipart/form-data">
+                            <h4 class="display-4 fs-1">Edit Family Profile</h4><br>
+
+                            <!-- Error/Success Messages -->
+                            <?php if(isset($_GET['error'])) { ?>
+                            <div class="alert alert-danger" role="alert">
+                                <?php echo $_GET['error']; ?>
+                            </div>
+                            <?php } ?>
+
+                            <?php if(isset($_GET['success'])) { ?>
+                            <div class="alert alert-success" role="alert">
+                                <?php echo $_GET['success']; ?>
+                            </div>
+                            <?php } ?>
+
+                            <!-- Family Name -->
+                            <div class="form-group mb-4">
+                                <label class="col-md-12 p-0">Family Name</label>
+                                <div class="col-md-12 border-bottom p-0">
+                                    <input type="text" name="family_name" placeholder="<?php echo $family_name; ?>" class="form-control p-0 border-0">
+                                </div>
+                            </div>
+
+                            <!-- Financial Goal -->
+                            <div class="form-group mb-4">
+                                <label class="col-md-12 p-0">Family Financial Goal</label>
+                                <div class="col-md-12 border-bottom p-0">
+                                    <input type="number" name="family_goal" placeholder="<?php echo $goal; ?> GH₵" class="form-control p-0 border-0">
+                                </div>
+                            </div>
+                            <!-- Family Description -->
+                            <div class="form-group mb-4">
+                                <label class="col-md-12 p-0">Family Description</label>
+                                <div class="col-md-12 border-bottom p-0">
+                                    <input type="text" name="family_description" placeholder="<?php echo $family_description; ?> " class="form-control p-0 border-0">
+                                </div>
+                            </div>
+
+                            <!-- Profile Picture Upload -->
+                            <div class="mb-3">
+                                <label class="form-label">Family Profile Picture</label>
+                                <input type="file" class="form-control" name="family_profile_pic">
+                                <input type="hidden" name="old_family_profile_pic" value="<?php echo $family_profile_pic; ?>">
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="form-group mb-4">
+                                <div class="col-sm-12">
+                                    <input class="btn btn-success" type="submit" name ="update_family" >
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
-            
+
+   <!-- Financial Categories Modal -->
+<div class="modal fade" id="financial-categories-modal" tabindex="-1" aria-labelledby="financialCategoriesLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="financialCategoriesLabel">Manage Financial Categories</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+            <form action="" method="POST">
+    <!-- Category Level (Parent or Child) -->
+    <div class="form-group mb-4">
+        <label for="category-level">Category Level</label><br>
+        <input type="radio" name="category_level" value="parent" id="category-parent" checked onclick="toggleParentDropdown()">
+        <label for="category-parent">Parent</label>
+        <input type="radio" name="category_level" value="child" id="category-child" onclick="toggleParentDropdown()">
+        <label for="category-child">Child</label>
+    </div>
+
+    <!-- Category Name -->
+    <div class="form-group mb-4">
+        <label for="category-name">Category Name</label>
+        <input type="text" name="category_name" id="category-name" class="form-control" required>
+    </div>
+
+    <!-- Category Type -->
+    <div class="form-group mb-4">
+        <label for="category-type">Category Type</label>
+        <select name="category_type" id="category-type" class="form-control" onchange="filterParentCategories()">
+            <option value="asset">Asset</option>
+            <option value="liability">Liability</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+        </select>
+    </div>
+
+    <!-- Parent Category Selection (Visible only if 'Child' is selected) -->
+    <div class="form-group mb-4" id="parent-category-group" style="display: none;">
+        <label for="parent-category">Parent Category</label>
+        <select name="parent_category" id="parent-category" class="form-control">
+            <option value="">None</option>
+            <?php
+            // PHP to load initial options
+            foreach($financial_categories as $financial_category) {
+                echo "<option value='{$financial_category['category_id']}' data-category='{$financial_category['category']}'>
+                        {$financial_category['category_name']}
+                      </option>";
+            }
+            ?>
+        </select>
+    </div>
+
+    <!-- Add Category Button -->
+    <input type="submit" class="btn btn-primary" name="add_category" value="Add Category">
+</form>
+
+<script>
+// Show/hide the Parent Category dropdown based on selected category level
+function toggleParentDropdown() {
+    const isChild = document.getElementById('category-child').checked;
+    document.getElementById('parent-category-group').style.display = isChild ? 'block' : 'none';
+}
+
+// Filter parent categories based on selected category type
+function filterParentCategories() {
+    const selectedType = document.getElementById('category-type').value;
+    const options = document.getElementById('parent-category').options;
+
+    for (let i = 0; i < options.length; i++) {
+        const option = options[i];
+        if (option.getAttribute('data-category') === selectedType || option.value === '') {
+            option.style.display = 'block';
+        } else {
+            option.style.display = 'none';
+        }
+    }
+}
+</script>
+
+
+
+    <!-- Family Settings Modal -->
+    <div class="modal fade" id="family-settings-modal" tabindex="-1" aria-labelledby="familySettingsLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="familySettingsLabel">Family Settings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form action="" method="POST">
+                        <!-- Role in Family -->
+                        <div class="form-group mb-4">
+                            <label for="family-role">Define Your Role in the Family</label>
+                            <input type="text" name="family_role" id="family-role" placeholder="<?php if(isset($family_position)){echo $family_position;} ?>" class="form-control">
+                        </div>
+                        <!-- Save Settings Button -->
+                        <input type="submit" class="btn btn-primary" name ="save_settings">
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+        </div>      
+    </div>
+</div>
                             
             
 
@@ -2048,59 +2026,13 @@ if(isset($_SESSION['message'])){
                     <div class="offcanvas-body w-100">
                       <div class="d-flex justify-content-between " >
                         <div id="left" >
-                              <div class="income " id="income">
-                                <header class="bg-secondary d-flex w-100" >
-                                  <h2 class="text-white">Income</h2>
-                                </header>
-                                
-                                <main id="income" >
-                                  <div class="d-flex justify-content-end"id="header">
-                                    <h3 class="">Cashflow</h3>
-                                    <hr>
-                                  </div>
-                                  
-                                  <?php 
-                                  
-                                  if($resultsincome->num_rows > 0){
-                                  while($row = $resultsincome -> fetch_assoc()){?>
-                                    <div class="d-flex justify-content-between" id="income-<?php echo $row['transaction_id'] ?>">
-                                    <h3 class=""><?php echo $row['category_name'];?>  </h3>
-                                    <h3 class="d-flex justify-content-end text-success"><?php echo $row['total_amount'];?> GH₵</h3>
-                                    
-                                    </div>
-                                    <hr style="color: black; border: 1px;">
-                                  <?php }}?>
-                        
-                            
-                                </main>
-                              </div>
+                        <div class="income" id="income">
+                            <?php generateSection($resultsincome, 'Income', 'text-success'); ?>
+                        </div>
 
-                            <div class="expense" id="expense">
-                              <header class="bg-secondary" >
-                                <h2 class="text-white">Expense</h2>
-                              </header>
-                              
-                              <main id="expense-cashflow" >
-                                <div class="d-flex justify-content-end" id="header">
-                                  <h3 class="">Cashflow</h3>
-                                  <hr>
-                                </div>
-                                <?php 
-                                
-                              if($resultsexpense->num_rows > 0){
-                                while($row = $resultsexpense -> fetch_assoc()){?>
-                                  <div class="d-flex justify-content-between" id="expense<?php echo $row['transaction_id'] ?>">
-                                  <h3 class=""><?php echo $row['category_name'];?> </h3> 
-                                  <h3 class="d-flex justify-content-end text-danger"><?php echo $row['total_amount'];?> GH₵</h3>
-                                  
-                                  </div>
-                                  <hr style="color: black; border: 1px;">
-                                <?php }}?>
-
-                              
-
-                                </main>
-                            </div>
+                        <div class="expense" id="expense">
+                            <?php generateSection($resultsexpense, 'Expense', 'text-danger'); ?>
+                        </div>
 
 
 
@@ -2108,16 +2040,13 @@ if(isset($_SESSION['message'])){
                        
 
                         <div id="right"  >
-                                <div class="passive_income" id="passive_income">
-                                  <header class="bg-secondary" >
-                                    <h2 class="text-white">Financial Goal</h2>
-                                    <h4 class="text-white d-flex justify-content-end"><?php echo $goal;?> GH₵</h4>
-                                  </header>
-                                  
+                        <div class="progress-container">
+                          <header class="bg-secondary">
+                              <h2 class="text-white">Financial Goal</h2>
+                              <h4 class="text-white d-flex justify-content-end"><?php echo $goal; ?> GH₵</h4>
+                          </header>
                                   <main id="passive_income" >
                                     
-                                      
-
                                       <?php
                                         // Example Data (You can replace these with database values)
                                         $total_goal = $goal;  // The target goal (e.g., total amount to be saved)
@@ -2218,126 +2147,32 @@ if(isset($_SESSION['message'])){
                       
                       
                       
-                      <div class="d-flex justify-content-between" >
-                        <div id="left" >
-                              <div class="assets" id="assets">
-                                <header class="bg-secondary" >
-                                  <h2 class="text-white">Assets</h2>
-                                </header>
-                                
-                                <main id="assets" >
+                      <div class="d-flex justify-content-between">
+    <div id="left">
+        <!-- Assets - Non-Real Estates -->
+        <div class="assets" id="assets">
+            <?php generateSection($resultsassets, "Assets", "text-success", "non-real estates"); ?>
+        </div>
 
+        <!-- Assets - Real Estates -->
+        <div class="assets" id="assets-real-estate">
+            <?php generateSection($resultsassets, "Real Estate Assets", "text-danger", "real estates"); ?>
+        </div>
+    </div>
 
+    <div id="right">
+        <!-- Liabilities - Non-Real Estates -->
+        <div class="liabilities" id="liabilities">
+            <?php generateSection($resultsliabilities, "Liabilities", "text-danger", "non-real estates"); ?>
+        </div>
 
+        <!-- Liabilities - Real Estates -->
+        <div class="liabilities" id="liabilities-real-estate">
+            <?php generateSection($resultsliabilities, "Real Estate Liabilities", "text-danger", "real estates"); ?>
+        </div>
+    </div>
+</div>
 
-                                    <div class="d-flex justify-content-between" id="assetss?>">
-                                    <h3 class="">Stocks/Funds/CDs</h3>
-                                    <h3 class="d-flex justify-content-end">Shares/$</h3>
-                                    
-                                    </div>
-                                    <hr style="color: black; border: 1px;">
-
-                                  
-                                  <?php 
-                                  
-                                  if($resultsassets->num_rows > 0){
-                                  while($row = $resultsassets -> fetch_assoc()) {if($row['category_name'] != 'real estates'){?>
-                                    <div class="d-flex justify-content-between" id="assets-<?php echo $row['resource_id']; ?>">
-                                    <h3 class=""><?php echo $row['item_name'] ;?></h3>
-                                    <h3 class="d-flex justify-content-end text-success"><?php echo $row['cashflow'] ;?></h3>
-                                    
-                                    </div>
-                                    <hr style="color: black; border: 1px;">
-                                  <?php }}}?>
-                        
-                                   
-                                  <div class="d-flex justify-content-between" id="costs?>">
-                                  <h3 class="">Real Estate/Business</h3>
-                                  <h3 class="d-flex justify-content-end ">Cost</h3>
-                                  
-                                  </div>
-                                  <hr style="color: black; border: 1px;">
-
-                                  <?php 
-
-                                  if($resultsassets->num_rows > 0){
-                                    while($row = $resultsassets -> fetch_assoc()){if($row['category_name'] == 'real estates'){?>
-                                  <div class="d-flex justify-content-between" id="cost-<?php echo $row['resource_id']; ?>">
-                                  <h3 class=""><?php echo $row['item_name'] ;?></h3>
-                                  <h3 class="d-flex justify-content-end text-danger"><?php echo $row['cashflow'] ;?></h3>
-                                  
-                                  </div>
-                                  <hr style="color: black; border: 1px;">
-                                  <?php }}}?>
-
-
-                               
-
-                              
-
-                                </main>
-                                </div>
-
-                        </div>
-
-
-
-                        <div id="right"  >
-
-
-                        <div class="liabilities" id="liabilities">
-                                <header class="bg-secondary" >
-                                  <h2 class="text-white">Liabilities</h2>
-                                </header>
-                                
-                                <main id="liabilities" >
-                                  
-                                  <?php 
-                                  
-                                  if($resultsliabilities->num_rows > 0){
-                                  while($row = $resultsliabilities -> fetch_assoc()){if($row['category_name'] != 'real estates'){?>
-                                    <div class="d-flex justify-content-between" id="liabilities-<?php echo $row['resource_id'] ?>">
-                                    <h3 class=""><?php echo $row['item_name'] ;?></h3>
-                                    <h3 class="d-flex justify-content-end text-danger"><?php echo $row['cashflow'] ;?></h3>
-                                    
-                                    </div>
-                                    <hr style="color: black; border: 1px;">
-                                  <?php }}}?>
-                        
-                                    
-
-                                
-                                  <div class="d-flex justify-content-between" id="liabilities">
-                                  <h3 class="">Real Estate/Business</h3>
-                                  <h3 class="">Liability</h3>
-                                  
-                                  </div>
-                                  <hr style="color: black; border: 1px;">
-
-
-
-
-                                <?php 
-                             if($resultsliabilities->num_rows > 0){
-                                while($row = $resultsliabilities -> fetch_assoc()){if($row['category_name'] == 'real estates'){?>
-                                  <div class="d-flex justify-content-between" id="cost-<?php echo $row['resource_id']; ?>">
-                                    <h3 class=""><?php echo $row['item_name'] ;?></h3>
-                                    <h3 class="d-flex justify-content-end text-danger"><?php echo $row['cashflow'] ;?></h3>
-                                  
-                                  </div>
-                                  <hr style="color: black; border: 1px;">
-                                <?php }}} ?>
-
-                              
-
-                                </main>
-                                </div>
-
-
-                            
-                          </div>
-                      
-                      </div>
 
 
                         
@@ -2391,7 +2226,7 @@ if(isset($_SESSION['message'])){
                 </div>
                 <div class="modal-body">
                 <form action="" method="post" style="width: 560px;">
-        <input type="hidden" name="assigner" id="assigner" value = "<?php echo $user_id; ?>">
+        <input type="hidden" name="assigner" id="assigner" value = "<?php echo $family_id; ?>">
 
     <div class="col-8">
                 <div class="input-group ">

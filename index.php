@@ -1,165 +1,66 @@
 <?php
 
 require_once("plugins/actions/config.php");
+require_once("plugins/actions/functions.php");  
 session_start();
 
-if(isset($_SESSION['user_id'])){
+if (isset($_SESSION['user_id'])) {
 
+    $user_id = $_SESSION['user_id'];
 
-$user_id = $_SESSION['user_id'];
+    // Get data
+    $myday_no = getMyDayCount($user_id, $conn);
+    $only_income = getTransactionSum($user_id, 'income', $conn);
+    $positive_cashflow = getCashflow($user_id, 'asset', $conn);
+    $negative_cashflow = getCashflow($user_id, 'liability', $conn);
 
-// for myday 
-$query = "SELECT count(*) as number_myday FROM tasks WHERE task_status = 'PENDING' AND DATE(deadline) = CURDATE() AND (task_assigner = $user_id OR task_assignee = $user_id)";
+    // Calculate total values
+    $passive_income = $positive_cashflow - $negative_cashflow;
+    $total_income = $passive_income + $only_income;
 
-$resultsmyday = $conn->query($query);
-if ($resultsmyday -> num_rows > 0 ){
-    $row = $resultsmyday -> fetch_assoc();
-    $myday_no = $row['number_myday'];
+    // Handle form submissions
+    if (isset($_POST['add_entry'], $_POST['entry'])) {
+        addDiaryEntry($user_id, $_POST['entry'], $_POST['date'], $_POST['title'], $conn);
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit();
+    }
 
-}
+    if (isset($_POST['add_website'], $_POST['url'])) {
+        addWebsiteEntry($user_id, $_POST['name'], $_POST['url'], $_POST['description'], $_POST['category'], $conn);
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit();
+    }
 
-// for diary  
-$resultsfetchdiaryquery = "SELECT * FROM Diary  WHERE diary_owner = $user_id ";
+    // Fetch total expense and total for selected categories
+    $only_expense = getTransactionSum($user_id, 'expense', $conn);
+    $total_expense = $only_expense + $positive_cashflow + $negative_cashflow;
 
+    // Calculate balance
+    $balance = $total_income - $total_expense;
+    updateUserBalance($user_id, $balance, $conn);
 
-$resultsfetchdiary = $conn->query($resultsfetchdiaryquery);
+    // Display session messages
+    displaySessionMessage();
 
+    // Fetch diary entries
+    $resultsfetchdiaryquery = "SELECT * FROM Diary WHERE diary_owner = ?";
+    $stmt = $conn->prepare($resultsfetchdiaryquery);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $resultsfetchdiary = $stmt->get_result();
 
-
-// for  user 
-$query = "SELECT * FROM users WHERE id = $user_id";
-
-$results = $conn->query($query);
-
-if ($results -> num_rows > 0){
-    while($row = $results->fetch_assoc()){
-        $username = $row['username'];
-        $profile_pic = $row['profile_pic'];
-        $cash = $row['balance'];
-        $goal = $row['financial_goal'];
+    // Fetch user details
+    $user_data = getUserData($user_id, $conn);
+    if ($user_data) {
+        $username = $user_data['username'];
+        $profile_pic = $user_data['profile_pic'];
+        $cash = $user_data['balance'];
+        $goal = $user_data['financial_goal'];
     }
 }
-
-// for only total income
-$query = "SELECT sum(total_amount) as number_income FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'income'";
-
-$resultsincomeno= $conn->query($query);
-if ($resultsincomeno -> num_rows > 0 ){
-    $row = $resultsincomeno -> fetch_assoc();
-    $only_income = $row['number_income'];
-}
-
-
-
-// for total positive cashflow
-$query = "SELECT sum(abs(cashflow)) as positive_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'asset'";
-
-$resultspositive_cashflow = $conn->query($query);
-if ($resultspositive_cashflow -> num_rows > 0 ){
-    $row = $resultspositive_cashflow -> fetch_assoc();
-    $positive_cashflow = $row['positive_cashflow'];
-}
-// for total negative cashflow
-$query = "SELECT sum(abs(cashflow)) as negative_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'liability'";
-
-$resultsnegative_cashflow = $conn->query($query);
-if ($resultsnegative_cashflow -> num_rows > 0 ){
-    $row = $resultsnegative_cashflow -> fetch_assoc();
-    $negative_cashflow = $row['negative_cashflow'];
-}
-
-// for only total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'expense'";
-
-$resultsexpenseno= $conn->query($query);
-if ($resultsexpenseno -> num_rows > 0 ){
-    $row = $resultsexpenseno -> fetch_assoc();
-    $only_expense = $row['number_expense'];
-}
-// for total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND (fc.category = 'expense' OR fc.category = 'asset' OR fc.category = 'liability')";
-
-$resultsexpensetotal= $conn->query($query);
-if ($resultsexpensetotal -> num_rows > 0 ){
-    $row = $resultsexpensetotal -> fetch_assoc();
-    $total_expense = $row['number_expense'];
-}
-
-$passive_income = ($positive_cashflow - $negative_cashflow);
-
-
-
-
-// for total income sum
-$total_income =$passive_income + $only_income;
-
-
-// for adding diary entry
-if (isset($_POST['add_entry'])&& isset($_POST['entry'])) {
-  
-  // Retrieve and sanitize input values
-  $diary_owner = $user_id;
-  $entry = !empty($_POST['entry']) ? $conn->real_escape_string($_POST['entry']) : '';
-  $date = !empty($_POST['date']) ? $conn->real_escape_string($_POST['date']) : date('d/m/y');
-  $entry_title = !empty($_POST['title']) ? $conn->real_escape_string($_POST['title']): '' ;
-
-
-    $querydiaryentry = "INSERT INTO Diary (diary_title, diary_entry, entry_date, diary_owner) 
-    VALUES ('$entry_title', '$entry', '$date', $diary_owner)";
-    $conn->query($querydiaryentry);
-
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
-  }
-
-
-// for adding website entry
-if (isset($_POST['add_website'])&& isset($_POST['url'])) {
-  
-  // Retrieve and sanitize input values
-  $website_user = $user_id;
-  $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : '';
-  $url = !empty($_POST['url']) ? $conn->real_escape_string($_POST['url']) : '';
-  $website_description = !empty($_POST['description']) ? $conn->real_escape_string($_POST['description']) : '';
-  $website_category = !empty($_POST['category']) ? $conn->real_escape_string($_POST['category']): 'Leisure' ;
-
-
-    $querywebsiteentry = "INSERT INTO favourite_sites (website_name, website_url, website_description, website_category, website_user) 
-    VALUES ('$name', '$url', '$website_description', '$website_category', $website_user)";
-    $conn->query($querywebsiteentry);
-
-
-    header("Location: " . $_SERVER['PHP_SELF']);
-    exit();
-  }
-
-
-
-$balance = $total_income - $total_expense;
-
-// Use a prepared statement to update the balance securely
-$query_profilebalance = "UPDATE users SET balance = ? WHERE id = ?";
-
-$stmt = $conn->prepare($query_profilebalance);
-if ($stmt) {
-    $stmt->bind_param('di', $balance, $user_id);  // 'd' for decimal, 'i' for integer
-    $stmt->execute();
-    $stmt->close();
-} else {
-    echo "Error: " . $conn->error;
-}
-
-
-
-
-
-if(isset($_SESSION['message'])){
-    echo $_SESSION['message'];
-    unset($_SESSION['message']);
-}
-}
 ?>
+
+
 
 <!DOCTYPE html>
 <html lang="en">
@@ -180,6 +81,7 @@ if(isset($_SESSION['message'])){
     <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
     <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
 <![endif]-->
+
 </head>
 
 <body class="bg-light">
@@ -199,19 +101,23 @@ if(isset($_SESSION['message'])){
         <!-- ============================================================== -->
         <!-- Topbar header - style you can find in pages.scss -->
         <!-- ============================================================== -->
-        <header class="topbar" data-navbarbg="skin5">
+        <header class="topbar bg-warning" data-navbarbg="skin5">
             <nav class="navbar top-navbar navbar-expand-md navbar-dark">
                 <div class="navbar-header" data-logobg="skin6">
                   
                     <!-- ============================================================== -->
                     <!-- toggle and nav items -->
                     <!-- ============================================================== -->
+
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
                     
                 </div>
                 <!-- ============================================================== -->
                 <!-- End Logo -->
                 <!-- ============================================================== -->
-                <div class="navbar-collapse collapse bg-warning" id="navbarSupportedContent" >
+                <div class="navbar-collapse collapse justify-content-end" id="navbarSupportedContent" >
                    
                     <!-- ============================================================== -->
                     <!-- Right side toggle and nav items -->
@@ -271,117 +177,114 @@ if(isset($_SESSION['message'])){
         </header>
 
         
-        <div class="page-breadcrumb bg-secondary">
-          
-        <?php if(isset($_SESSION['user_id'])){
-?>
-                    <div class="row align-items-center">
-                        <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
-                            <!-- Button to toggle offcanvas -->
-                            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
-                            Favourite Websites
-                            </button>
-                        </div>
-                        <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12">
-                            <div class="d-md-flex">
-                                <ol class="breadcrumb ms-auto">
-                                    <li><a type="button" class="btn btn-danger  d-none d-md-block pull-right ms-3 hidden-xs hidden-sm waves-effect waves-light text-white" data-bs-toggle="modal" data-bs-target="#diary-modal" >Diary Entry</a></li>
-                                </ol>
+
+       <div class="page-wrapper">
+                <div class="page-breadcrumb bg-secondary">
+                    <?php if(isset($_SESSION['user_id'])){ ?>
+                        <div class="row align-items-center">
+                            <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
+                                <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
+                                    Favourite Websites
+                                </button>
+                            </div>
+                            <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12">
+                                <div class="d-md-flex">
+                                    <ol class="breadcrumb ms-auto">
+                                        <li><a type="button" class="btn btn-danger  d-none d-md-block pull-right ms-3 hidden-xs hidden-sm waves-effect waves-light text-white" data-bs-toggle="modal" data-bs-target="#diary-modal">Diary Entry</a></li>
+                                    </ol>
                                 </div>
+                            </div>
+                        </div>
+                    <?php } else { ?>
+                        <div class="row align-items-center">
+                            <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
+                                <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
+                                    Favourite Websites <span><img height="20" width="20" src="plugins/images/locked.png" ></span>
+                                </button>
+                            </div>
+                            <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12">
+                                <div class="d-md-flex">
+                                    <ol class="breadcrumb ms-auto">
+                                        <li><a type="button" class="btn btn-danger d-none d-md-block pull-right ms-3 hidden-xs hidden-sm waves-effect waves-light text-white" data-bs-toggle="modal" data-bs-target="#diary-modal">Diary Entry<span><img height="20" width="20" src="plugins/images/locked.png" ></span></a></li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                    <?php } ?>
+                </div>
+
+            <?php if(isset($user_id)) { ?>
+                <div id="main_page" class="mt-5 ms-5 h-100 w-75 ">
+                    <h2 class="text-center">Apps</h2>
+
+                    <div id="apps" class="me-5 d-flex flex-wrap justify-content-between">
+                        <!-- Finance Section -->
+                        <div id="finances" class="border border-1 me-5 rounded p-4 w-100 w-sm-50 w-md-25 d-flex justify-content-start mb-3">
+                            <h3>
+                                <a href="finance.php" class="d-flex align-items-center position-relative text-center text-decoration-none">
+                                    <img src="plugins/images/finance.jpg" alt="finance" width="60" height="60" class="rounded-circle">
+                                    <h4 class="mt-2">Finance</h4>
+                                </a>
+                            </h3>
+                        </div>
+
+                        <!-- Tasks Section -->
+                        <div id="tasks" class="border border-1 rounded p-4 w-100 w-sm-50 w-md-25 me-5 mb-3">
+                            <h3>
+                                <a href="task.php" class="d-flex align-items-center position-relative text-decoration-none">
+                                    <img src="plugins/images/tasks.jpg" alt="task" width="60" height="60" class="me-3 rounded-circle">
+                                    <h4 class="mb-0">
+                                        Tasks
+                                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                                            <?php echo $myday_no ?? 0; ?>
+                                            <span class="visually-hidden">Tasks for today</span>
+                                        </span>
+                                    </h4>
+                                </a>
+                            </h3>
+                        </div>
+
+                        <!-- Diet Section -->
+                        <div id="diet" class="border border-1 me-5 rounded p-4 w-100 w-sm-50 w-md-25 mb-3">
+                            <h3>
+                                <a href="diet.php" class="text-center d-flex align-items-center position-relative text-decoration-none">
+                                    <img src="plugins/images/diet.jpg" alt="diet" width="60" height="60" class="rounded-circle">
+                                    <h4 class="mt-2">Diet</h4>
+                                </a>
+                            </h3>
+                        </div>
+
+                        <!-- Family Section -->
+                        <div id="family" class="border border-1 rounded p-4 w-100 w-sm-50 w-md-25 mb-3">
+                            <h3>
+                                <a href="family.php" class="text-center d-flex align-items-center position-relative text-decoration-none">
+                                    <img src="plugins/images/family.jpg" alt="family" width="60" height="60" class="rounded-circle">
+                                    <h4 class="mt-2">Family</h4>
+                                </a>
+                            </h3>
                         </div>
                     </div>
-                    <?php }else{ ?>
-                    <div class="row align-items-center">
-                        <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
-                            <!-- Button to toggle offcanvas -->
-                            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
-                              Favourite Websites <span ><img height="20" width="20" src="plugins/images/locked.png" ></span>
-                            </button>
-                        </div>
-                        <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12">
-                            <div class="d-md-flex">
-                                <ol class="breadcrumb ms-auto">
-                                    <li><a type="button" class="btn btn-danger  d-none d-md-block pull-right ms-3 hidden-xs hidden-sm waves-effect waves-light text-white" data-bs-toggle="modal" data-bs-target="#diary-modal" >Diary Entry<span ><img height="20" width="20" src="plugins/images/locked.png" ></span></a></li>
-                                </ol>
-                                </div>
-                        </div>
-                    </div>
-                    <?php }?>
-                    <!-- /.col-lg-12 -->
-                </div>
-                
-        <?php if(isset($user_id)) {?>
-
-        <div id="main_page" class="mt-5 ms-5 h-100 w-75"  >
-
-            <h2 class="text-center">Apps</h2>
-
-            <div id="apps" class=" me-5 d-flex justify-content-between">
-                <div id="finances" class="border border-1 me-5 rounded p-4 w-25 d-flex justify-content-start">
-                    <h3>
-                        <a href="finance.php" class="d-flex align-items-center position-relative text-center text-decoration-none">
-                            <img src="plugins/images/finance.jpg" alt="finance" width="60" height="60" class="rounded-circle">
-                            <h4 class="mt-2">Finance</h4>
-                        </a>
-                        
-                    </h3>
                 </div>
 
-                    <br>
+                <!-- footer -->
+            <!-- ============================================================== -->
+            <footer class="footer text-center bg-dark text-white py-3 w-100 position-relative bottom-0 "> 2024 © Task manager brought to you by JopalBusinessCenter
+                    <p>Theme was reproduced from <a
+                    href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
 
-                <div id="tasks" class="border border-1 rounded p-4 w-25  me-5">
-                    <h3>
-                        <a href="task.php" class="d-flex align-items-center position-relative text-decoration-none">
-                            <img src="plugins/images/tasks.jpg" alt="task" width="60" height="60" class="me-3 rounded-circle">
+            </footer>
+            <!-- ============================================================== -->
+            <!-- End footer -->
+            <!-- ============================================================== -->
+            
+        </div>
 
-                            <h4 class="mb-0">
-                                Tasks
-                                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                                    <?php echo $myday_no ?? 0; ?>
-                                    <span class="visually-hidden">Tasks for today</span>
-                                </span>
-                            </h4>
-                        </a>
-                        
-                    </h3>
-                </div>
-
-                       
-
-
-                <div id="diet" class="border border-1 me-5  rounded p-4 w-25">
-                    <h3>
-                        <a href="diet.php" class="text-center d-flex align-items-center position-relative text-decoration-none">
-                            <img src="plugins/images/diet.jpg" alt="diet" width="60" height="60" class="rounded-circle">
-                            <h4 class="mt-2">Diet</h4>
-                        </a>
-
-                    </h3>
-                </div>
-                            <br>
-
-                
-                <div id="family" class="border border-1 rounded  p-4 w-25 ">
-                    <h3>
-                        <a href="family.php" class="text-center d-flex align-items-center position-relative text-decoration-none">
-                            <img src="plugins/images/family.jpg" alt="family" width="60" height="60" class="rounded-circle">
-                            <h4 class="mt-2">Family</h4>
-                        </a>
-
-                    </h3>
-                </div>
+<!-- family is hidden i dont know why -->
+            
 
                 
 
-            </div>
-            
-            
-                            
-            
-
-
-
-            <!-- Offcanvas Sidebar -->
+<!-- Offcanvas Sidebar -->
                   <div class="offcanvas offcanvas-start w-25" style="background-color:bisque" tabindex="-1" id="offcanvasExample" aria-labelledby="offcanvasExampleLabel">
                     <div class="offcanvas-header">
                       <h5 class="offcanvas-title" id="offcanvasExampleLabel">Favourite Websites</h5>
@@ -498,11 +401,6 @@ if(isset($_SESSION['message'])){
                       
                       
                       </div>
-
-                      
-    </div>
-
-
             
 
 
@@ -725,16 +623,7 @@ if(isset($_SESSION['message'])){
 
         <?php } ?>
 
-            <!-- footer -->
-            <!-- ============================================================== -->
-            <footer class="footer text-center bg-dark text-white py-3 w-100 position-absolute bottom-0 "> 2024 © Task manager brought to you by JopalBusinessCenter
-                    <p>Theme was reproduced from <a
-                    href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
-
-            </footer>
-            <!-- ============================================================== -->
-            <!-- End footer -->
-            <!-- ============================================================== -->
+            
 
 
 

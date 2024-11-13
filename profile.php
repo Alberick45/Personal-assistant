@@ -265,19 +265,22 @@ if ($results -> num_rows > 0){
         <!-- ============================================================== -->
         <!-- Topbar header - style you can find in pages.scss -->
         <!-- ============================================================== -->
-        <header class="topbar" data-navbarbg="skin5">
+        <header class="topbar bg-warning" data-navbarbg="skin5">
             <nav class="navbar top-navbar navbar-expand-md navbar-dark">
                 <div class="navbar-header" data-logobg="skin6">
                     
                     <!-- ============================================================== -->
                     <!-- toggle and nav items -->
                     <!-- ============================================================== -->
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
                     
                 </div>
                 <!-- ============================================================== -->
                 <!-- End Logo -->
                 <!-- ============================================================== -->
-                <div class="navbar-collapse collapse bg-warning" id="navbarSupportedContent" >
+                <div class="navbar-collapse collapse " id="navbarSupportedContent" >
                    
                     <!-- ============================================================== -->
                     <!-- Right side toggle and nav items -->
@@ -1336,7 +1339,7 @@ if ($results -> num_rows > 0){
 
                             <div class="nav" id="nav-tab" role="tablist">
                                 <button class=" nav-item btn-success text-white  rounded my-2 active" id="nav-family-join-tab" data-bs-toggle="tab" data-bs-target="#nav-family-join" type="button" role="tab" aria-controls="nav-family-join" aria-selected="true"  style="border:0px; margin-right:5vw;">Join Family</button>
-                                <button class="nav-item btn-warning my-2 rounded text-white" id="nav-expense-tab" data-bs-toggle="tab" data-bs-target="#family-creates" type="button" role="tab" aria-controls="nav-family-create" aria-selected="false"style="border:0px; margin-right:5vw;">Create a family</button>
+                                <button class="nav-item btn-warning my-2 rounded text-white" id="nav-expense-tab" data-bs-toggle="tab" data-bs-target="#family-create" type="button" role="tab" aria-controls="nav-family-create" aria-selected="false"style="border:0px; margin-right:5vw;">Create a family</button>
                                
                             </div>
 
@@ -1344,57 +1347,82 @@ if ($results -> num_rows > 0){
         <div class="tab-content" id="nav-tabContent">
           
         <!-- this is the family-join tab -->
-        <div class="tab-pane fade show active" id="nav-family-join" role="tabpanel" aria-labelledby="nav-family-join-tab">
-            <?php while($row = $resultsincomeparent->fetch_assoc()){
-                $parentcategory = $row['category_id'];?>
-                <div id="parent-<?php echo $parentcategory;?>">
-                    <h3 class="text-primary"><?php echo $row['category_name'];?></h3>
+        <!-- Family Join Tab -->
+<div class="tab-pane fade show active" id="nav-family-join" role="tabpanel" aria-labelledby="nav-family-join-tab">
+    <form action="plugins/actions/family_join.php" method="post" style="width: 560px;">
+        <input type="hidden" name="user" id="user" value="<?php echo $user_id; ?>">
 
-                    <?php while($row = $resultsincome->fetch_assoc()){
-                        if($row['parent_category_id'] == $parentcategory){
-                    $childcategory = $row['category_id'];?>
-                    <div id="child-<?php echo $childcategory;?> data-bs-toggle='modal' 
-                                    data-bs-target='#update-category-modal-<?php echo $row['category_id']; ?>' role='button' 
-                                    class='mt-2' 
-                                    style='display: inline-block;'">
-                        
-                    <h3 class="text-secondary"><?php echo $row['category_name'];?></h3>
-
-                    </div>
-                    <?php }}?>
-                </div><br>
-            <?php } ?>
-
-        <span class="d-flex justify-content-end"><a data-bs-toggle="modal" data-bs-target="#family-join-modal" role="button" ><img height="20" width="20" src="plugins/images/add.png" alt="add income category"></a></span>   
-
+        <div class="col-8">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <label for="name">Enter Family Name</label>
+                </span>
+                <input type="text" name="name" id="name" required>
+            </div>
         </div>
+        <br>
+
+        <div class="col-8">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <label for="passcode">Enter Family Passcode</label>
+                </span>
+                <input type="text" name="passcode" id="passcode" required>
+            </div>
+        </div>
+        <br>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <input class="btn btn-primary" type="submit" name="submit_join" id="submit">
+        </div>
+    </form>
+</div>
+
           
           <!-- this is the family-create section -->
-          <div class="tab-pane p-5 " id="family-creates" role="tabpanel" aria-labelledby="nav-family-create-tab">
-            
-             <?php while($row = $resultsexpenseparent->fetch_assoc()){
-                $parentcategory = $row['category_id'];?>
-                <div id="parent-<?php echo $parentcategory;?>">
-                    <h3 class="text-primary"><?php echo $row['category_name'];?></h3>
+          <!-- Family Create Tab -->
+<div class="tab-pane p-5" id="family-create" role="tabpanel" aria-labelledby="nav-family-create-tab">
+    <form action="plugins/actions/family_create.php" method="post" style="width: 560px;">
+        <input type="hidden" name="user" id="user" value="<?php echo $user_id; ?>">
 
-                    <?php while($row = $resultsexpense->fetch_assoc()){
-                        if($row['parent_category_id'] == $parentcategory){
-                    $childcategory = $row['category_id'];?>
-                    <div id="child-<?php echo $childcategory;?> data-bs-toggle='modal' 
-                                    data-bs-target='#update-category-modal-<?php echo $row['category_id']; ?>' role='button' 
-                                    class='mt-2' 
-                                    style='display: inline-block;'">
-                        
-                    <h3 class="text-secondary"><?php echo $row['category_name'];?></h3>
+        <div class="col-8">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <label for="name">Enter Family Name</label>
+                </span>
+                <input type="text" name="name" id="name" required>
+            </div>
+        </div>
+        <br>
 
-                    </div>
-                    <?php }}?>
-                </div><br>
-            <?php } ?>
+        <div class="col-8">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <label for="security_code">Enter Family Security Code</label>
+                </span>
+                <input type="text" name="security_code" id="security_code" required>
+            </div>
+        </div>
+        <br>
 
-        <span class="d-flex justify-content-end"><a data-bs-toggle="modal" data-bs-target="#family-create-modal" role="button" ><img height="20" width="20" src="plugins/images/add.png" alt="add expense category"></a></span>   
+        <div class="col-8">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <label for="description">Enter Family Description</label>
+                </span>
+                <input type="text" name="description" id="description" required>
+            </div>
+        </div>
+        <br>
 
-          </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <input class="btn btn-primary" type="submit" name="family_create" id="submit">
+        </div>
+    </form>
+</div>
+
 
           
       
@@ -1413,107 +1441,7 @@ if ($results -> num_rows > 0){
 
 
 
-            <!-- this is the join family category modal -->
-            <div class="modal fade" id="family-join-modal" tabindex="-1" aria-labelledby="family-join-modal-title" aria-hidden="false">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="family-join-modal-title">Join Family</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <form action="" method="post" style="width: 560px;">
-                                <input type="hidden" name="user" id="user" value="<?php echo $user_id; ?>">
-
-                                <div class="col-8">
-                                    <div class="input-group">
-                                        <span class="input-group-text">
-                                            <label for="name">Enter Family Name</label>
-                                        </span>
-                                        <input type="text" name="name" id="name" required>
-                                    </div>
-                                </div>
-                                <br>
-
-                                <div class="col-8">
-                                    <div class="input-group">
-                                        <span class="input-group-text">
-                                            <label for="passcode">Enter Family Passcode</label>
-                                        </span>
-                                        <input type="text" name="passcode" id="passcode" required>
-                                    </div>
-                                </div>
-                                <br>
-
-                                
-
-
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                    <input class="btn btn-primary" type="submit" name="submit_income_cat" id="submit">
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-</div>
-
-            <!-- this is the Family create category modal -->
-            <div class="modal fade" id="family-create-modal" tabindex="-1" aria-labelledby="family-create-modal-title" aria-hidden="false">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="family-create-modal-title">Create a  new Family</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form action="" method="post" style="width: 560px;">
-                    <input type="hidden" name="user" id="user" value="<?php echo $user_id; ?>">
-
-                    <div class="col-8">
-                        <div class="input-group">
-                            <span class="input-group-text">
-                                <label for="name">Enter Family Name</label>
-                            </span>
-                            <input type="text" name="name" id="name" required>
-                        </div>
-                    </div>
-                    <br>
-
-                    <div class="col-8">
-                        <div class="input-group">
-                            <span class="input-group-text">
-                                <label for="passcode">Enter Family Security passcode</label>
-                            </span>
-                            <input type="text" name="passcode" id="passcode" required>
-                        </div>
-                    </div>
-                    <br>
-
-                    <div class="col-8">
-                        <div class="input-group">
-                            <span class="input-group-text">
-                                <label for="description">Enter Family Description</label>
-                            </span>
-                            <input type="text" name="description" id="description" required>
-                        </div>
-                    </div>
-                    <br>
-
-                   
-                  
-
-                   
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <input class="btn btn-primary" type="submit" name="submit_expense_cat" id="submit">
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+         
 
  
 

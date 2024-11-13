@@ -1,6 +1,7 @@
 <?php
 
 require_once("plugins/actions/config.php");
+require_once("plugins/actions/functions.php");  
 session_start();
 
 if(isset($_SESSION['user_id'])){
@@ -51,296 +52,124 @@ $resultsliabilities = $conn->query($resultsliabilitiesquery);
 
 
 
-// for  user 
-$query = "SELECT * FROM users WHERE id = $user_id";
+// Get data
+$only_income = getTransactionSum($user_id, 'income', $conn);
+$positive_cashflow = getCashflow($user_id, 'asset', $conn);
+$negative_cashflow = getCashflow($user_id, 'liability', $conn);
 
-$results = $conn->query($query);
+// Fetch total expense and total for selected categories
+$only_expense = getTransactionSum($user_id, 'expense', $conn);
+$total_expense = $only_expense + $positive_cashflow + $negative_cashflow;
 
-if ($results -> num_rows > 0){
-    while($row = $results->fetch_assoc()){
-        $username = $row['username'];
-        $profile_pic = $row['profile_pic'];
-        $cash = $row['balance'];
-        $goal = $row['financial_goal'];
-    }
+// Calculate total values
+$passive_income = $positive_cashflow - $negative_cashflow;
+$total_income = $passive_income + $only_income;
+
+
+
+// Fetch user details
+$user_data = getUserData($user_id, $conn);
+if ($user_data) {
+    $username = $user_data['username'];
+    $profile_pic = $user_data['profile_pic'];
+    $cash = $user_data['balance'];
+    $goal = $user_data['financial_goal'];
 }
 
-// for only total income
-$query = "SELECT sum(total_amount) as number_income FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'income'";
-
-$resultsincomeno= $conn->query($query);
-if ($resultsincomeno -> num_rows > 0 ){
-    $row = $resultsincomeno -> fetch_assoc();
-    $only_income = $row['number_income'];
-}
 
 
-
-// for total positive cashflow
-$query = "SELECT sum(abs(cashflow)) as positive_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'asset'";
-
-$resultspositive_cashflow = $conn->query($query);
-if ($resultspositive_cashflow -> num_rows > 0 ){
-    $row = $resultspositive_cashflow -> fetch_assoc();
-    $positive_cashflow = $row['positive_cashflow'];
-}
-// for total negative cashflow
-$query = "SELECT sum(abs(cashflow)) as negative_cashflow FROM resources r LEFT JOIN financial_category fc ON r.category_id = fc.category_id WHERE  r.user_id = $user_id AND fc.category = 'liability'";
-
-$resultsnegative_cashflow = $conn->query($query);
-if ($resultsnegative_cashflow -> num_rows > 0 ){
-    $row = $resultsnegative_cashflow -> fetch_assoc();
-    $negative_cashflow = $row['negative_cashflow'];
-}
-
-// for only total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND fc.category = 'expense'";
-
-$resultsexpenseno= $conn->query($query);
-if ($resultsexpenseno -> num_rows > 0 ){
-    $row = $resultsexpenseno -> fetch_assoc();
-    $only_expense = $row['number_expense'];
-}
-// for total expense
-$query = "SELECT sum(total_amount) as number_expense FROM transactions t LEFT JOIN financial_category fc ON t.category_id = fc.category_id WHERE  t.user_id = $user_id AND (fc.category = 'expense' OR fc.category = 'asset' OR fc.category = 'liability')";
-
-$resultsexpensetotal= $conn->query($query);
-if ($resultsexpensetotal -> num_rows > 0 ){
-    $row = $resultsexpensetotal -> fetch_assoc();
-    $total_expense = $row['number_expense'];
-}
-
-$passive_income = ($positive_cashflow - $negative_cashflow);
-
-
-// for adding transaction
+// For adding a transaction
 if (isset($_POST['add_transaction'])) {
-  // Retrieve and sanitize input values
-  $transaction_user = $conn->real_escape_string($_POST['user']);
+  $user_id = $conn->real_escape_string($_POST['user']);
+  $category_id = $conn->real_escape_string($_POST['category']);
   $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
   $time = !empty($_POST['time']) ? $conn->real_escape_string($_POST['time']) : date('Y/m/d H:i:s');
-  $category = $conn->real_escape_string($_POST['category']) ;
+  $note = isset($_POST['note']) ? $conn->real_escape_string($_POST['note']) : '';
 
-
-  if (isset($_POST['note'])){
-    $cat_note = $conn->real_escape_string($_POST['note']);
-    // transaction_item,
-     // SQL query with parent_category_id handling
-    $querytransaction = "INSERT INTO transactions (category_id, user_id, total_amount, transaction_time,note) 
-    VALUES ($category, $transaction_user, '$amount', '$time', '$cat_note')";
-
-    $querybudgettransaction = "UPDATE budget SET budget_amount_remaining= (budget_amount-$amount), note = '$cat_note' WHERE category_id=$category";
-    $conn->query($querybudgettransaction);
-
-   
-  }else{
-        // SQL query with parent_category_id handling
-    $querytransaction = "INSERT INTO transactions (category_id, user_id, total_amount, transaction_time) 
-    VALUES ($category, $transaction_user, '$amount', '$time')";
-
-    $querybudgettransaction = "UPDATE budget SET budget_amount_remaining= (budget_amount-$amount) WHERE category_id=$category";
-    $conn->query($querybudgettransaction);
-  }
-
-  
-
-  // Execute the query and check for errors
-  if ($conn->query($querytransaction)) {
-      echo "Category added successfully!";
+  // Call the function to add the transaction
+  if (addTransaction($user_id, $category_id, $amount, $time, $note, $conn)) {
+      echo "Transaction added successfully!";
   } else {
-      echo "Error: " . $conn->error;
+      echo "Error adding transaction: " . $conn->error;
   }
- // Redirect to the same page to prevent form resubmission on refresh
-      header("Location: " . $_SERVER['PHP_SELF']);
-      exit();
+
+  // Update the budget remaining if necessary
+  updateBudgetRemaining($category_id, $amount, $note, $conn);
+  header("Location: " . $_SERVER['PHP_SELF']);
+  exit();
 }
 
 
 
-// for adding budget
+// For adding a budget
 if (isset($_POST['add_budget'])) {
-  // Retrieve and sanitize input values
-  $budget_user = $conn->real_escape_string($_POST['user']);
-  // $item_name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : 'unknown';
+  $user_id = $conn->real_escape_string($_POST['user']);
+  $category_id = $conn->real_escape_string($_POST['category']);
   $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
+  $month = !empty($_POST['month']) ? date('F', strtotime($_POST['month'])) : date('F');
+  $note = isset($_POST['note']) ? $conn->real_escape_string($_POST['note']) : '';
 
-
-   // Extract the month name from the 'YYYY-MM' input
-   if (!empty($_POST['month'])) {
-    $month_input = $_POST['month']; // e.g., '2024-10'
-    $month = date('F', strtotime($month_input)); // Converts to 'October'
-} else {
-    $month = date('F'); // Current month name if no input
-}
-
-  $category = $conn->real_escape_string($_POST['category']) ;
-
-
-  if (isset($_POST['note'])){
-    $cat_note = $conn->real_escape_string($_POST['note']);
-    // budget_item,
-     // SQL query with parent_category_id handling
-    $querybudget = "INSERT INTO budget (category_id, user_id, budget_amount, budget_amount_remaining, budget_month,note) 
-    VALUES ($category, $budget_user, '$amount', '$amount', '$month', '$cat_note')";
-  }else{
-        // SQL query with parent_category_id handling
-    $querybudget = "INSERT INTO budget (category_id, user_id, budget_amount, budget_amount_remaining, budget_month) 
-    VALUES ($category, $budget_user, '$amount', '$amount','$month')";
-  }
-
-  // Execute the query and check for errors
-  if ($conn->query($querybudget)) {
-      echo "Category added successfully!";
+  // Call the function to add the budget
+  if (addBudget($user_id, $category_id, $amount, $month, $note, $conn)) {
+      echo "Budget added successfully!";
   } else {
-      echo "Error: " . $conn->error;
-  }
- // Redirect to the same page to prevent form resubmission on refresh
-      header("Location: " . $_SERVER['PHP_SELF']);
-      exit();
-}
-
-
-// for total income sum
-$total_income =$passive_income + $only_income;
-
-
-// for adding resource
-if (isset($_POST['add_resource'])) {
-  
-  // Retrieve and sanitize input values
-  $transaction_user = $conn->real_escape_string($_POST['user']);
-  $item_name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : 'unknown';
-  $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
-  $time = !empty($_POST['time']) ? $conn->real_escape_string($_POST['time']) : date('Y/m/d H:i:s');
-  $category = $conn->real_escape_string($_POST['category']) ;
-
-
-  if (isset($_POST['note'])){
-    $cat_note = $conn->real_escape_string($_POST['note']);
-    // transaction_item,
-     // SQL query with parent_category_id handling
-    $querytransaction = "INSERT INTO transactions (category_id, user_id, total_amount, transaction_time,note) 
-    VALUES ($category, $transaction_user, '$amount', '$time', '$cat_note')";
-
-    $queryresource = "INSERT INTO resources (item_name, item_price, user_id, category_id,item_description) 
-    VALUES ('$item_name', '$amount', $transaction_user, $category, '$cat_note')";
-    $conn->query($queryresource);
-  }else{
-        // SQL query with parent_category_id handling
-    $querytransaction = "INSERT INTO transactions (category_id, user_id, total_amount, transaction_time) 
-    VALUES ($category, $transaction_user, '$amount', '$time')";
-
-    $queryresource = "INSERT INTO resources (item_name, item_price, user_id, category_id) 
-    VALUES ('$item_name', '$amount', $transaction_user, $category)";
-    $conn->query($queryresource);
-  }
-
-  
-
-  // Execute the query and check for errors
-  if ($conn->query($querytransaction)) {
-      echo "Category added successfully!";
-  } else {
-      echo "Error: " . $conn->error;
-  }
- // Redirect to the same page to prevent form resubmission on refresh
-      header("Location: " . $_SERVER['PHP_SELF']);
-      exit();
-}
-
-
-
-
-
-
-$balance = $total_income - $total_expense;
-
-// Use a prepared statement to update the balance securely
-$query_profilebalance = "UPDATE users SET balance = ? WHERE id = ?";
-
-$stmt = $conn->prepare($query_profilebalance);
-if ($stmt) {
-    $stmt->bind_param('di', $balance, $user_id);  // 'd' for decimal, 'i' for integer
-    $stmt->execute();
-    $stmt->close();
-} else {
-    echo "Error: " . $conn->error;
-}
-
-
-
-
-if (isset($_POST['update_resources'])) {
-  $resource_id = $_POST['resource'];
-
-  // Fetch the current values from the database
-  $query = "SELECT item_name, item_description, personal_notes, item_price, cashflow 
-            FROM resources WHERE resource_id = ?";
-  $stmt = $conn->prepare($query);
-  $stmt->bind_param('i', $resource_id);
-  $stmt->execute();
-  $result = $stmt->get_result();
-  $resource = $result->fetch_assoc();
-  $stmt->close();
-
-  // Assign values or keep the original ones if input is empty
-  $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : $resource['item_name'];
-  $description = !empty($_POST['description']) ? $conn->real_escape_string($_POST['description']) : $resource['item_description'];
-  $notes = !empty($_POST['notes']) ? $conn->real_escape_string($_POST['notes']) : $resource['personal_notes'];
-  $price = !empty($_POST['price']) ? $conn->real_escape_string($_POST['price']) : $resource['item_price'];
-  $cashflow = !empty($_POST['cashflow']) ? $conn->real_escape_string($_POST['cashflow']) : $resource['cashflow'];
-
-  // SQL query to update the resource
-  $updateQuery = "UPDATE resources 
-                  SET item_name = ?, item_description = ?, personal_notes = ?, 
-                      item_price = ?, cashflow = ? 
-                  WHERE resource_id = ?";
-
-  $stmt = $conn->prepare($updateQuery);
-  if ($stmt) {
-      $stmt->bind_param('ssssdi', $name, $description, $notes, $price, $cashflow, $resource_id);
-
-      if ($stmt->execute()) {
-          echo "Resource updated successfully!";
-      } else {
-          echo "Error: " . $stmt->error;
-      }
-      $stmt->close();
-  } else {
-      echo "Error: " . $conn->error;
+      echo "Error adding budget: " . $conn->error;
   }
 
   header("Location: " . $_SERVER['PHP_SELF']);
-      exit();
+  exit();
 }
 
 
 
 
-// for important tasks 
-// $query = "SELECT count(*) as number_important FROM tasks WHERE task_status = 'PENDING' AND task_importance = 'Important' and task_assigner = $user_id";
+// For adding a resource
+if (isset($_POST['add_resource'])) {
+  $user_id = $conn->real_escape_string($_POST['user']);
+  $category_id = $conn->real_escape_string($_POST['category']);
+  $item_name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : 'unknown';
+  $amount = !empty($_POST['amount']) ? $conn->real_escape_string($_POST['amount']) : '0.00';
+  $description = isset($_POST['note']) ? $conn->real_escape_string($_POST['note']) : '';
 
-// $resultsimportant= $conn->query($query);
-// if ($resultsimportant -> num_rows > 0 ){
-//     $row = $resultsimportant -> fetch_assoc();
-//     $important_no = $row['number_important'];
+  // Call the function to add the resource
+  if (addResource($user_id, $category_id, $item_name, $amount, $description, $conn)) {
+      echo "Resource added successfully!";
+  } else {
+      echo "Error adding resource: " . $conn->error;
+  }
 
-// }
-// for  tasks 
-// $query = "SELECT count(*) as number_tasks FROM tasks WHERE task_assigner = $user_id";
-
-// $resultstasks = $conn->query($query);
-// if ($resultstasks -> num_rows > 0 ){
-//     $row = $resultstasks -> fetch_assoc();
-//     $tasks_no = $row['number_tasks'];
-
-// }
-
-
-if(isset($_SESSION['message'])){
-    echo $_SESSION['message'];
-    unset($_SESSION['message']);
+  header("Location: " . $_SERVER['PHP_SELF']);
+  exit();
 }
+
+
+
+
+
+// For updating a resource
+if (isset($_POST['update_resources'])) {
+  $resource_id = $conn->real_escape_string($_POST['resource']);
+  $name = !empty($_POST['name']) ? $conn->real_escape_string($_POST['name']) : null;
+  $description = !empty($_POST['description']) ? $conn->real_escape_string($_POST['description']) : null;
+  $notes = !empty($_POST['notes']) ? $conn->real_escape_string($_POST['notes']) : null;
+  $price = !empty($_POST['price']) ? $conn->real_escape_string($_POST['price']) : null;
+  $cashflow = !empty($_POST['cashflow']) ? $conn->real_escape_string($_POST['cashflow']) : null;
+
+  // Call the function to update the resource
+  if (updateResource($resource_id, $name, $description, $notes, $price, $cashflow, $conn)) {
+      echo "Resource updated successfully!";
+  } else {
+      echo "Error updating resource: " . $conn->error;
+  }
+
+  header("Location: " . $_SERVER['PHP_SELF']);
+  exit();
+}
+
+
+// Display session messages
+displaySessionMessage();
+
 }
 ?>
 
@@ -382,19 +211,23 @@ if(isset($_SESSION['message'])){
         <!-- ============================================================== -->
         <!-- Topbar header - style you can find in pages.scss -->
         <!-- ============================================================== -->
-        <header class="topbar" data-navbarbg="skin5">
+        <header class="topbar bg-warning" data-navbarbg="skin5">
             <nav class="navbar top-navbar navbar-expand-md navbar-dark">
                 <div class="navbar-header" data-logobg="skin6">
                   
                     <!-- ============================================================== -->
                     <!-- toggle and nav items -->
                     <!-- ============================================================== -->
+
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
                     
                 </div>
                 <!-- ============================================================== -->
                 <!-- End Logo -->
                 <!-- ============================================================== -->
-                <div class="navbar-collapse collapse bg-warning" id="navbarSupportedContent" >
+                <div class="navbar-collapse collapse" id="navbarSupportedContent" >
                    
                     <!-- ============================================================== -->
                     <!-- Right side toggle and nav items -->
