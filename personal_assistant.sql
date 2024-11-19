@@ -215,68 +215,43 @@ CREATE TABLE inventory (
     constraint family_inventory foreign key (family_id)  references family(id) on delete set NULL
 ) ;
 
+CREATE TABLE contacts (
+ Contact_id INT AUTO_INCREMENT PRIMARY KEY,
+ Contact_name VARCHAR(255) NOT NULL,
+ Contact_phone VARCHAR(15) NOT NULL,
+ Address TEXT NOT NULL,
+ Birthday DATE,
+ contact_user_id INT,
+ user_id INT,
+ Created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES users(id),
+ FOREIGN KEY (contact_user_id) REFERENCES users(id)
+);
 
+CREATE TABLE chats (
+    chat_id INT AUTO_INCREMENT PRIMARY KEY,
+    chat_name VARCHAR(255),               -- For group chats, NULL for direct chats
+    chat_type ENUM('direct', 'group') NOT NULL, -- 'direct' for one-on-one, 'group' for families/groups
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 
--- Scheduled Event for Repeating Tasks
-DELIMITER //
+CREATE TABLE chat_participants (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    chat_id INT NOT NULL,
+    user_id INT NOT NULL,                  -- User participating in the chat
+    is_admin BOOLEAN DEFAULT FALSE,       -- For groups, mark if the user is an admin
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chat_id) REFERENCES chats(chat_id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
 
-CREATE EVENT repeat_tasks_event
-ON SCHEDULE EVERY 1 DAY
-DO 
-BEGIN
-    DECLARE exit handler FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-    END;
-
-    START TRANSACTION;
-
-    INSERT INTO tasks (
-        task_name, 
-        deadline, 
-        task_duration, 
-        task_description, 
-        task_status, 
-        task_assigner, 
-        task_importance, 
-        task_assignee, 
-        task_resource_filename, 
-        repeat_status, 
-        repeat_interval, 
-        repeat_unit, 
-        reminder_status, 
-        reminder_interval
-    )
-    SELECT 
-        task_name,
-        CASE 
-            WHEN repeat_unit = 'DAY' THEN DATE_ADD(deadline, INTERVAL repeat_interval DAY)
-            WHEN repeat_unit = 'WEEK' THEN DATE_ADD(deadline, INTERVAL repeat_interval WEEK)
-            WHEN repeat_unit = 'MONTH' THEN DATE_ADD(deadline, INTERVAL repeat_interval MONTH)
-            WHEN repeat_unit = 'YEAR' THEN DATE_ADD(deadline, INTERVAL repeat_interval YEAR)
-        END AS new_deadline,
-        task_duration,
-        task_description,
-        'PENDING' AS task_status,
-        task_assigner,
-        task_importance,
-        task_assignee,
-        task_resource_filename,
-        repeat_status,
-        repeat_interval,
-        repeat_unit,
-        reminder_status,
-        CASE 
-            WHEN repeat_unit = 'DAY' THEN DATE_ADD(reminder_interval, INTERVAL repeat_interval DAY)
-            WHEN repeat_unit = 'WEEK' THEN DATE_ADD(reminder_interval, INTERVAL repeat_interval WEEK)
-            WHEN repeat_unit = 'MONTH' THEN DATE_ADD(reminder_interval, INTERVAL repeat_interval MONTH)
-            WHEN repeat_unit = 'YEAR' THEN DATE_ADD(reminder_interval, INTERVAL repeat_interval YEAR)
-        END AS new_reminder_interval
-    FROM tasks
-    WHERE repeat_status = 'Yes' AND task_status = 'COMPLETED'
-    ON DUPLICATE KEY UPDATE task_status = VALUES(task_status);
-
-    COMMIT;
-END //
-
-DELIMITER ;
+CREATE TABLE messages (
+    message_id INT AUTO_INCREMENT PRIMARY KEY,
+    chat_id INT NOT NULL,                  -- Associated chat ID
+    sender_id INT NOT NULL,                -- Sender of the message
+    content TEXT NOT NULL,                 -- Message content
+    message_type ENUM('text', 'image', 'file') DEFAULT 'text', -- Message type
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chat_id) REFERENCES chats(chat_id),
+    FOREIGN KEY (sender_id) REFERENCES users(id)
+);

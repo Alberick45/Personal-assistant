@@ -22,6 +22,7 @@
       $task_deadline = $_POST['deadline'] ?? null;
       $task_duration = $_POST['duration'] ?? null;
       $task_assigner = $_POST['assigner'] ?? null;
+      $file_name = $_POST['file'] ?? null;
       
       try {
       insertTask($conn, $task_name, $task_deadline, $task_duration, $task_description, $task_assigner, $file_name);
@@ -124,9 +125,170 @@ if (isset($_POST['upload_timetable']) && isset($_FILES['timetable_file'])) {
     <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
     <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
 <![endif]-->
+
+
+<script src="plugins/js/reminders.js"></script>
+<script src="plugins/js/repeat_tasks.js"></script>
+
+<style>
+  
+/* Root Theme Colors */
+:root {
+    --primary-color: #007bff; /* Blue */
+    --secondary-color: #6c757d; /* Gray */
+    --background-color: #f8f9fa; /* Light Background */
+    --accent-color: #28a745; /* Green */
+    --hover-color: #0056b3; /* Darker Blue */
+    --text-color: #343a40; /* Dark Gray */
+}
+
+a.dropdown-item{
+    color:gray;
+}
+
+/* General Body Styles */
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 1rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    animation: slideIn 1s ease-out;
+}
+
+.navbar a {
+    color: white;
+    text-decoration: none;
+    margin: 0 1rem;
+}
+
+.navbar a:hover {
+    color: var(--hover-color);
+    transition: color 0.3s;
+}
+
+/* Buttons */
+.btn {
+    background-color: var(--accent-color);
+    border: none;
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border-radius: 5px;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, background-color 0.3s;
+}
+
+.btn:hover {
+    background-color: var(--hover-color);
+    transform: translateY(-3px);
+}
+
+/* Cards */
+.card {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    margin: 1rem 0;
+    animation: fadeIn 1s ease-in-out;
+}
+
+.card h3 {
+    color: var(--primary-color);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* Footer */
+.footer {
+    background-color: var(--secondary-color);
+    color: white;
+    text-align: center;
+    padding: 1rem;
+    margin-top: 2rem;
+    animation: fadeIn 1.5s;
+}
+
+/* Content Sections */
+.section {
+    padding: 2rem;
+    margin: 1rem 0;
+}
+
+.section h2 {
+    color: var(--primary-color);
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Input Fields */
+input, textarea {
+    width: 100%;
+    padding: 0.8rem;
+    margin: 1rem 0;
+    border: 1px solid var(--secondary-color);
+    border-radius: 5px;
+    transition: border 0.3s;
+}
+
+input:focus, textarea:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+/* Media Queries for Responsiveness */
+@media (max-width: 768px) {
+    .navbar a {
+        margin: 0 0.5rem;
+    }
+    .btn {
+        width: 100%;
+        padding: 1rem;
+    }
+}
+
+</style>
 </head>
 
 <body>
+
+<!-- The audio element that will play the ping sound -->
+<audio id="notificationSound" src="plugins/sounds/ping.mp3" preload="auto"></audio>
+
+<div id="reminder-message"></div>
+
     <!-- ============================================================== -->
     <!-- Preloader - style you can find in spinners.css -->
     <!-- ============================================================== -->
@@ -220,22 +382,35 @@ if (isset($_POST['upload_timetable']) && isset($_FILES['timetable_file'])) {
 
         
         
-        <div class="page-breadcrumb bg-secondary">
-                    <div class="row align-items-center">
-                        <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
-                            <h4 class="page-title"><span><a href="task.php" ><img height="50" width="50" src="plugins/images/house1.png" alt="Go to home page"></a></span> </h4>
-                        </div>
-                        <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12">
-                            <div class="d-md-flex">
-                                <ol class="breadcrumb ms-auto">
-                                    <li><a type="button" class="btn btn-danger  d-none d-md-block pull-right ms-3 hidden-xs hidden-sm waves-effect waves-light text-white" data-bs-toggle="modal" data-bs-target="#timetable-modal" >Upload Timetable</a></li>
-                                    <li><a type="button" class="btn btn-danger  d-none d-md-block pull-right ms-3 hidden-xs hidden-sm waves-effect waves-light text-white" data-bs-toggle="modal" data-bs-target="#task-upload-modal" >Upload Task</a></li>
-                                </ol>
-                                </div>
-                        </div>
-                    </div>
-                    <!-- /.col-lg-12 -->
-                </div>
+        <div class="page-breadcrumb" style="background-color: brown;">
+    <div class="row align-items-center">
+        <!-- Left Section with Title -->
+        <div class="col-lg-3 col-md-4 col-sm-4 col-12">
+            <h4 class="page-title">
+                <span>
+                    <a href="task.php">
+                        <img height="50" width="50" src="plugins/images/house1.png" alt="Go to home page">
+                    </a>
+                </span>
+            </h4>
+        </div>
+
+        <!-- Right Section with Buttons -->
+        <div class="col-lg-9 col-md-8 col-sm-8 col-12 d-flex justify-content-end">
+            <div class="d-flex flex-wrap justify-content-end gap-2">
+                <a type="button" class="btn btn-danger waves-effect waves-light text-white"
+                   data-bs-toggle="modal" data-bs-target="#timetable-modal">
+                    Upload Timetable
+                </a>
+                <a type="button" class="btn btn-danger waves-effect waves-light text-white"
+                   data-bs-toggle="modal" data-bs-target="#task-upload-modal">
+                    Upload Task
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
 
             <div class="accordion" id="accordionExample">
               <div class="accordion-item">
@@ -275,7 +450,7 @@ if (isset($_POST['upload_timetable']) && isset($_FILES['timetable_file'])) {
                       <?php if($row['task_resource_filename']){ ?>
                         <span >
                           <a href="plugins/tasks/files/<?php echo $row['task_resource_filename'];?>" download="<?php echo $row['task_resource_filename'];?>">
-                            <img src="plugins/images/file.png" alt="download" style="width: 20px; height: 20px;">
+                            <img src="plugins/images/file.png" alt="download" style="width: 20px; height: 20px;"></a>
                         </span>
                       
                       <?php } ?>
@@ -658,6 +833,19 @@ if (isset($_POST['upload_timetable']) && isset($_FILES['timetable_file'])) {
 
         <?php } ?>
 
+        <!-- Footer for smaller screens -->
+<footer class="footer text-center bg-dark text-white py-3 w-100 position-relative bottom-0 d-sm-block d-md-none d-lg-none">
+    2024 © Task manager brought to you by JopalBusinessCenter
+    <p>Theme was reproduced from <a href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
+</footer>
+
+<!-- Footer for larger screens -->
+<footer class="footer text-center bg-dark text-white py-3 w-100 position-absolute bottom-0 d-none d-md-block">
+    2024 © Task manager brought to you by JopalBusinessCenter
+    <p>Theme was reproduced from <a href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
+</footer>
+
+
 <!-- this is the tasks modal -->
 <div class="modal fade" id="add-tasks-modal" tabindex="-1" aria-labelledby="add-tasks-modal-title" aria-hidden="false">
             <div class="modal-dialog modal-dialog-centered">
@@ -701,7 +889,7 @@ if (isset($_POST['upload_timetable']) && isset($_FILES['timetable_file'])) {
         <div class="col-8">
                 <div class="input-group ">
                 <span class="input-group-text"><label for="duration">Duration</label></span>
-                <input type="number" name="duration" id="duration"> <span class="input-group-text">Seconds</span>
+                <input type="number" name="duration" id="duration" value="1"> <span class="input-group-text">Seconds</span>
                 </div>
         </div>
         

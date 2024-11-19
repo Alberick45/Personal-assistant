@@ -1,0 +1,85 @@
+/* chat_widget_style.css */
+#chat-widget {
+    position: fixed;   /* Make sure it stays on screen */
+    bottom: 10px;      /* Position it at the bottom */
+    right: 10px;       /* Position it at the right */
+    width: 300px;      /* Set a width for the chat */
+    height: 400px;     /* Set a height for the chat */
+    background-color: #f9f9f9; /* Add a background color */
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    display: none;     /* Hide initially */
+    z-index: 9999;     /* Ensure it appears on top of other content */
+}
+
+#chat-toggle-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #007bff;
+    color: #fff;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    z-index: 1;
+}
+
+#chat-header {
+    background-color: #007bff;
+    padding: 10px;
+    color: #fff;
+    text-align: center;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+
+#chat-close {
+    float: right;
+    background-color: transparent;
+    border: none;
+    color: white;
+    font-size: 16px;
+}
+
+#chat-body {
+    padding: 10px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#chat-messages {
+    max-height: 200px;
+    overflow-y: scroll;
+}
+
+.message {
+    padding: 8px;
+    margin: 5px 0;
+    border-radius: 5px;
+}
+
+.message.sent {
+    background-color: #f1f1f1;
+    text-align: right;
+}
+
+.message.received {
+    background-color: #007bff;
+    color: #fff;
+}
+
+#chat-input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+#send-message {
+    width: 100%;
+    padding: 10px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+}

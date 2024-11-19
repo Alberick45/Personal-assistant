@@ -81,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_category'])) {
     } else {
         header("Location: " . $_SERVER['PHP_SELF'] . "?error=Failed to add category.");
     }
+    exit();
 }
 
 
@@ -102,6 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_category'])) {
     } else {
         header("Location: " . $_SERVER['PHP_SELF']);
     }
+    exit();
 }
 
 // update family profile
@@ -122,6 +124,7 @@ if (isset($_POST['update_family'])) {
     } else {
         header("Location: ". $_SERVER['PHP_SELF']."?error=" . urlencode($response));
     }
+    exit();
 }
 
 
@@ -140,6 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
     } else {
         header("Location: family.php?error=" . urlencode($response));
     }
+    exit();
 }
 
 // Check if category ID is passed for deletion
@@ -155,6 +159,7 @@ if (isset($_GET['delete_id'])) {
     } else {
         header("Location: " . $_SERVER['PHP_SELF']);
     }
+    exit();
 }
 
 
@@ -171,6 +176,7 @@ if (isset($_GET['delete_id'])) {
           header("Location: " . $_SERVER['PHP_SELF']);
           exit();
       }
+      exit();
   }
 
   // Handle add budget form submission
@@ -187,6 +193,7 @@ if (isset($_GET['delete_id'])) {
           header("Location: " . $_SERVER['PHP_SELF']);
           exit();
       }
+      exit();
   }
 
   // Handle add resource form submission
@@ -203,6 +210,7 @@ if (isset($_GET['delete_id'])) {
           header("Location: " . $_SERVER['PHP_SELF']);
           exit();
       }
+      exit();
   }
 
 
@@ -224,6 +232,7 @@ if (isset($_GET['delete_id'])) {
           header("Location: " . $_SERVER['PHP_SELF']);
           exit();
       }
+      exit();
   }
 
 
@@ -252,7 +261,8 @@ if (isset($_GET['delete_id'])) {
         // Redirect on success
         header("Location: " . $_SERVER['PHP_SELF']);
         exit();
-    } 
+    }
+    exit(); 
 }
 
 
@@ -266,6 +276,7 @@ if (isset($_POST['add_ingredient'])) {
   } else {
       echo "Error adding ingredient.";
   }
+  exit();
 }
 
 // Example usage of addDiaryEntry function
@@ -276,6 +287,7 @@ if (isset($_POST['add_entry']) && isset($_POST['entry'])) {
   } else {
       echo "Error adding diary entry.";
   }
+  exit();
 }
 
 // Example usage of addFavoriteWebsite function
@@ -286,6 +298,7 @@ if (isset($_POST['add_website']) && isset($_POST['url'])) {
   } else {
       echo "Error adding favorite website.";
   }
+  exit();
 }
 
 
@@ -324,6 +337,7 @@ if (isset($_POST['submit'])) {
           echo "File upload error!";
           exit();
       }
+      exit();
   }
 
   // Use existing addTask function to add task
@@ -334,6 +348,7 @@ if (isset($_POST['submit'])) {
   } else {
       echo "Error adding task.";
   }
+  exit();
 }
 
 
@@ -395,6 +410,154 @@ displaySessionMessage();
     <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
     <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
 <![endif]-->
+
+
+<style>
+    
+/* Root Theme Colors */
+:root {
+    --primary-color: #007bff; /* Blue */
+    --secondary-color: #6c757d; /* Gray */
+    --background-color: #f8f9fa; /* Light Background */
+    --accent-color: #28a745; /* Green */
+    --hover-color: #0056b3; /* Darker Blue */
+    --text-color: #343a40; /* Dark Gray */
+}
+
+/* General Body Styles */
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 1rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    animation: slideIn 1s ease-out;
+}
+
+.navbar a {
+    color: white;
+    text-decoration: none;
+    margin: 0 1rem;
+}
+
+.navbar a:hover {
+    color: var(--hover-color);
+    transition: color 0.3s;
+}
+
+/* Buttons */
+.btn {
+    background-color: var(--accent-color);
+    border: none;
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border-radius: 5px;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, background-color 0.3s;
+}
+
+.btn:hover {
+    background-color: var(--hover-color);
+    transform: translateY(-3px);
+}
+
+/* Cards */
+.card {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    margin: 1rem 0;
+    animation: fadeIn 1s ease-in-out;
+}
+
+.card h3 {
+    color: var(--primary-color);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* Footer */
+.footer {
+    background-color: var(--secondary-color);
+    color: white;
+    text-align: center;
+    padding: 1rem;
+    margin-top: 2rem;
+    animation: fadeIn 1.5s;
+}
+
+/* Content Sections */
+.section {
+    padding: 2rem;
+    margin: 1rem 0;
+}
+
+.section h2 {
+    color: var(--primary-color);
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Input Fields */
+input, textarea {
+    width: 100%;
+    padding: 0.8rem;
+    margin: 1rem 0;
+    border: 1px solid var(--secondary-color);
+    border-radius: 5px;
+    transition: border 0.3s;
+}
+
+input:focus, textarea:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+/* Media Queries for Responsiveness */
+@media (max-width: 768px) {
+    .navbar a {
+        margin: 0 0.5rem;
+    }
+    .btn {
+        width: 100%;
+        padding: 1rem;
+    }
+}
+
+</style>
 </head>
 
 <body class="bg-light">
@@ -490,48 +653,48 @@ displaySessionMessage();
         </header>
 
         
-        <div class="page-breadcrumb bg-secondary">
-          
-        <?php if(isset($family_id)){
-?>
-                    <div class="row align-items-center">
-                        <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
-                            <!-- Button to toggle offcanvas -->
-                            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
-                            Financials
-                            </button>
-                        </div>
+        <div class="page-breadcrumb" style="background-color:brown !important;">
+    
+    <?php if(isset($family_id)): ?>
+    
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <!-- Left Section: Financials Button -->
+            <div class="mb-2">
+                <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
+                    Financials
+                </button>
+            </div>
+            
+            <!-- Right Section: Home Icon -->
+            <div class="mb-2">
+                <a href="index.php">
+                    <img height="50" width="50" src="plugins/images/exit.jpg" alt="Go to home page">
+                </a>
+            </div>
+        </div>
+        
+    <?php else: ?>
+    
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <!-- Left Section: Stocks Button with Locked Icon -->
+            <div class="mb-2">
+                <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
+                    Stocks <img height="20" width="20" src="plugins/images/locked.png">
+                </button>
+            </div>
+            
+            <!-- Right Section: Home Icon -->
+            <div class="mb-2">
+                <a href="index.php">
+                    <img height="50" width="50" src="plugins/images/exit.jpg" alt="Go to home page">
+                </a>
+            </div>
+        </div>
+        
+    <?php endif; ?>
+    
+</div>
 
-                        <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12">
-                              <div class="d-md-flex">
-                                  <ol class="breadcrumb ms-auto">
-                                      <li><span><a href="index.php" ><img height="50" width="50" src="plugins/images/exit.jpg" alt="Go to home page"></a></span></li>
-                                  </ol>
-                            </div>  
-                          </div>
-                        
-                    </div>
-                    <?php }else{ ?>
-                    <div class="row align-items-center">
-                        <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
-                            <!-- Button to toggle offcanvas -->
-                            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
-                              Stocks <span ><img height="20" width="20" src="plugins/images/locked.png" ></span>
-                            </button>
-                        </div>
-
-                        <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12">
-                              <div class="d-md-flex">
-                                  <ol class="breadcrumb ms-end">
-                                      <li><span><a href="index.php" ><img height="50" width="50" src="plugins/images/exit.jpg" alt="Go to home page"></a></span></li>
-                                  </ol>
-                                  </div>
-                          </div>
-                        
-                    </div>
-                    <?php }?>
-                    <!-- /.col-lg-12 -->
-                </div>
                 
         <?php if(isset($family_id)) {?>
 
@@ -568,6 +731,20 @@ displaySessionMessage();
   <div class="tab-pane fade show active" id="pills-chat" role="tabpanel" aria-labelledby="pills-chat-tab" tabindex="0">
     
                       <h3> Chats </h3>
+
+                      <!--Start of Tawk.to Script-->
+                    <script type="text/javascript">
+                    var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+                    (function(){
+                    var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+                    s1.async=true;
+                    s1.src='https://embed.tawk.to/67362d6b4304e3196ae29d02/1iclq2vo2';
+                    s1.charset='UTF-8';
+                    s1.setAttribute('crossorigin','*');
+                    s0.parentNode.insertBefore(s1,s0);
+                    })();
+                    </script>
+                    <!--End of Tawk.to Script--></th>
             </div>
 
             <div class="tab-pane fade" id="pills-menu" role="tabpanel" aria-labelledby="pills-menu-tab" tabindex="0">
@@ -2429,7 +2606,13 @@ function filterParentCategories() {
 
             <!-- footer -->
             <!-- ============================================================== -->
-            <footer class="footer text-center bg-dark text-white py-3 w-100 position-absolute b+m-0 "> 2024 © Task manager brought to you by JopalBusinessCenter
+            <footer class="footer text-center bg-dark text-white py-3 w-100 position-relative bottom-0 d-sm-block d-lg-none"> 2024 © Task manager brought to you by JopalBusinessCenter
+                    <p>Theme was reproduced from <a
+                    href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
+
+            </footer>
+
+            <footer class="footer text-center bg-dark text-white py-3 w-100 position-absolute bottom-0 d-sm-none d-lg-block"> 2024 © Task manager brought to you by JopalBusinessCenter
                     <p>Theme was reproduced from <a
                     href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
 

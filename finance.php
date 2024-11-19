@@ -192,6 +192,395 @@ displaySessionMessage();
     <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
     <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
 <![endif]-->
+
+<style>
+  
+/* Root Theme Colors */
+:root {
+    --primary-color: #007bff; /* Blue */
+    --secondary-color: #6c757d; /* Gray */
+    --background-color: #f8f9fa; /* Light Background */
+    --accent-color: #28a745; /* Green */
+    --hover-color: #0056b3; /* Darker Blue */
+    --text-color: #343a40; /* Dark Gray */
+}
+
+/* General Body Styles */
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 1rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    animation: slideIn 1s ease-out;
+}
+
+.navbar a {
+    color: white;
+    text-decoration: none;
+    margin: 0 1rem;
+}
+
+.navbar a:hover {
+    color: var(--hover-color);
+    transition: color 0.3s;
+}
+
+/* Buttons */
+.btn {
+    background-color: var(--accent-color);
+    border: none;
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border-radius: 5px;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, background-color 0.3s;
+}
+
+.btn:hover {
+    background-color: var(--hover-color);
+    transform: translateY(-3px);
+}
+
+/* Cards */
+.card {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    margin: 1rem 0;
+    animation: fadeIn 1s ease-in-out;
+}
+
+.card h3 {
+    color: var(--primary-color);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* Footer */
+.footer {
+    background-color: var(--secondary-color);
+    color: white;
+    text-align: center;
+    padding: 1rem;
+    margin-top: 2rem;
+    animation: fadeIn 1.5s;
+}
+
+/* Content Sections */
+.section {
+    padding: 2rem;
+    margin: 1rem 0;
+}
+
+.section h2 {
+    color: var(--primary-color);
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Input Fields */
+input, textarea {
+    width: 100%;
+    padding: 0.8rem;
+    margin: 1rem 0;
+    border: 1px solid var(--secondary-color);
+    border-radius: 5px;
+    transition: border 0.3s;
+}
+
+input:focus, textarea:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+/* Media Queries for Responsiveness */
+@media (max-width: 768px) {
+    .navbar a {
+        margin: 0 0.5rem;
+    }
+    .btn {
+        width: 100%;
+        padding: 1rem;
+    }
+}
+
+  /* Button Hover Animation */
+.btn:hover {
+    background-color: #007bff; /* Adjust the color as needed */
+    transform: scale(1.1); /* Slightly enlarge the button on hover */
+    transition: transform 0.3s ease, background-color 0.3s ease; /* Smooth transition */
+}
+
+/* Center Content */
+.d-flex.justify-content-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Positioning the offcanvas button */
+#offcanvasExample {
+    position: relative;
+    top: 10px; /* Adjust as needed */
+}
+
+/* Add space between elements */
+.d-flex.justify-content-between {
+    gap: 20px; /* Adds space between items */
+}
+
+/* Accordion Styles */
+.accordion-item {
+    background-color: #f8f9fa; /* Light gray background */
+    border: 1px solid #ddd; /* Border to separate items */
+}
+
+.accordion-button {
+    background-color: #007bff; /* Button background */
+    color: white;
+    border-color: #0056b3; /* Darker border for the header */
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.accordion-button:hover {
+    background-color: #0056b3; /* Change color on hover */
+}
+
+.accordion-collapse {
+    transition: max-height 0.5s ease-in-out;
+}
+
+.accordion-body {
+    transition: opacity 0.3s ease;
+}
+
+/* Text color for success and danger categories */
+.bg-success {
+    background-color: #28a745 !important; /* Green background for income */
+    color: white;
+}
+
+.bg-danger {
+    background-color: #dc3545 !important; /* Red background for expense */
+    color: white;
+}
+
+/* Table Header Color */
+.table-dark th {
+    background-color: #343a40; /* Dark header */
+    color: white;
+}
+
+/* Modal Background */
+.modal-content {
+    background-color: #f8f9fa;
+}
+
+/* Change text color inside modal */
+.modal-title {
+    color: #007bff;
+}
+
+/* Custom background for rows */
+.bg-success td, .bg-danger td {
+    background-color: inherit; /* Inherit the background color */
+    color: white;
+}
+
+/* Smooth transition for accordion */
+.accordion-button {
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.accordion-collapse {
+    transition: max-height 0.5s ease-in-out;
+}
+
+/* Modal fade effect */
+.modal.fade .modal-dialog {
+    transition: transform 0.3s ease-out;
+    transform: translate(0, -50px); /* Start off slightly above */
+}
+
+.modal.show .modal-dialog {
+    transform: translate(0, 0); /* Slide into place */
+}
+
+/* Background color for rows */
+.bg-success td, .bg-danger td {
+    background-color: inherit;
+    color: white;
+}
+
+/* Add transitions for table rows */
+table tbody tr {
+    transition: background-color 0.3s ease;
+}
+
+table tbody tr:hover {
+    background-color: #f1f1f1; /* Highlight row on hover */
+}
+
+/* Table Responsive */
+.table-responsive {
+    margin-top: 20px;
+    overflow-x: auto;
+}
+
+/* Custom Background for the Page */
+.page-breadcrumb.bg-secondary {
+    background-color: #6c757d; /* Dark gray background for breadcrumb */
+    padding: 15px;
+    border-radius: 5px;
+}
+
+.page-breadcrumb .breadcrumb {
+    color: white;
+}
+
+.page-breadcrumb a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+/* Custom Styling for Navigation */
+.nav-link {
+    color: #007bff;
+    transition: color 0.3s ease;
+}
+
+.nav-link:hover {
+    color: #0056b3;
+}
+
+
+/* General Breadcrumb Styles */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end; /* Align to the right */
+    margin-bottom: 0;
+    padding: 0;
+}
+
+.breadcrumb li {
+    list-style-type: none;
+}
+
+.breadcrumb a {
+    display: inline-block;
+    padding: 10px;
+    color: #007bff; /* Blue color for the link */
+    text-decoration: none;
+    transition: color 0.3s ease, transform 0.3s ease;
+}
+
+.breadcrumb a:hover {
+    color: #0056b3; /* Darker blue when hovered */
+    transform: scale(1.1); /* Slightly enlarge on hover */
+}
+
+.breadcrumb a img {
+    transition: transform 0.3s ease;
+}
+
+/* Add a hover effect to the image */
+.breadcrumb a:hover img {
+    transform: rotate(10deg); /* Image rotation effect */
+}
+
+/* Responsive Design for smaller screens */
+@media (max-width: 768px) {
+    .breadcrumb {
+        justify-content: center; /* Center the breadcrumb on small screens */
+    }
+
+    .breadcrumb a {
+        padding: 5px; /* Reduce padding on small screens */
+    }
+
+    .breadcrumb a img {
+        height: 40px; /* Reduce the size of the image on small screens */
+        width: 40px;
+    }
+}
+
+
+
+/* Button with Locked Icon */
+.page-breadcrumb .btn img {
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+/* Page Breadcrumb Styles */
+.page-breadcrumb {
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
+
+.page-breadcrumb .btn-primary:hover {
+    background-color: #0056b3;
+    transform: scale(1.05);
+}
+
+
+
+/* Mobile Responsive Design */
+@media (max-width: 768px) {
+    .card-container {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .page-breadcrumb .btn {
+        font-size: 0.9em;
+        padding: 8px 15px;
+    }
+
+    .floating-guide {
+        top: 5%;
+        right: 5%;
+        width: 250px;
+        padding: 10px;
+    }
+}
+</style>
+
 </head>
 
 <body class="bg-light">
@@ -286,41 +675,38 @@ displaySessionMessage();
             </nav>
         </header>
 
-        
-        <div class="page-breadcrumb bg-secondary">
-          
-        <?php if(isset($_SESSION['user_id'])){
-?>
-                    <div class="row align-items-center">
-                        <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
-                            <!-- Button to toggle offcanvas -->
-                            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
-                              financial Statement
-                            </button>
-                        </div>
+        <div class="page-breadcrumb " style="background-color:brown">
+    <?php if (isset($_SESSION['user_id'])) { ?>
+      <div class="row align-items-center">
+        <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
+            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
+                Financial Statement
+            </button>
+        </div>
 
-                        <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12">
-                            <div class="d-md-flex">
-                                <ol class="breadcrumb ms-auto">
-                                    <li><span><a href="index.php" ><img height="50" width="50" src="plugins/images/exit.jpg" alt="Go to home page"></a></span></li>
-                                </ol>
-                                </div>
-                        </div>
-                       
-                    </div>
-                    <?php }else{ ?>
-                    <div class="row align-items-center">
-                        <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
-                            <!-- Button to toggle offcanvas -->
-                            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
-                              financial Statement<span ><img height="20" width="20" src="plugins/images/locked.png" ></span>
-                            </button>
-                        </div>
-                        
-                    </div>
-                    <?php }?>
-                    <!-- /.col-lg-12 -->
-                </div>
+        <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12 d-flex justify-content-end">
+            <ol class="breadcrumb ms-auto mb-0">
+                <li><span><a href="index.php"><img height="50" width="50" src="plugins/images/exit.jpg" alt="Go to home page"></a></span></li>
+            </ol>
+        </div>
+    </div>
+</div>
+    <?php } else { ?>
+        <div class="row align-items-center">
+            <div class="col-lg-3 col-md-4 col-sm-4 col-xs-12">
+                <!-- Button to toggle offcanvas -->
+                <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample" aria-controls="offcanvasExample">
+                    Financial Statement<span><img height="20" width="20" src="plugins/images/locked.png" alt="locked"></span>
+                </button>
+            </div>
+
+            <div class="col-lg-9 col-sm-8 col-md-8 col-xs-12 d-flex justify-content-end">
+                <!-- You can add additional content here if needed -->
+            </div>
+        </div>
+    <?php } ?>
+</div>
+
                 
         <?php if(isset($user_id)) {?>
 
@@ -329,7 +715,7 @@ displaySessionMessage();
               <div class="accordion-item" >
                   <h2 class="accordion-header">
                     <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
-                    <h2 class="text-center">Transactions</h2>
+                    <h2 class="text-center text-dark">Transactions</h2>
                     </button>
                   </h2>
                   <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#accordionExample">
@@ -449,7 +835,7 @@ displaySessionMessage();
               <div class="accordion-item">
                   <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
-                    <h2 class="text-center">Resources</h2>
+                    <h2 class="text-center text-dark">Resources</h2>
                     </button>
                   </h2>
                   <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
@@ -585,7 +971,7 @@ displaySessionMessage();
               <div class="accordion-item">
                 <h2 class="accordion-header">
                   <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
-                  <h2 class="text-center">Budget</h2>
+                  <h2 class="text-center text-dark">Budget</h2>
                   </button>
                 </h2>
                 <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
@@ -801,7 +1187,7 @@ displaySessionMessage();
                   <div class="accordion-item">
               <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour" aria-expanded="false" aria-controls="collapseFour">
-                <h2 class="text-center">Get business knowledge</h2>
+                <h2 class="text-center text-dark">Get business knowledge</h2>
                 </button>
               </h2>
               <div id="collapseFour" class="accordion-collapse collapse" data-bs-parent="#accordionExample">
@@ -1715,7 +2101,13 @@ displaySessionMessage();
 
             <!-- footer -->
             <!-- ============================================================== -->
-            <footer class="footer text-center bg-dark text-white py-3 w-100 position-relative bottom-0 "> 2024 © Task manager brought to you by JopalBusinessCenter
+            <footer class="footer text-center bg-dark text-white py-3 w-100 position-relative bottom-0 d-sm-block d-lg-none"> 2024 © Task manager brought to you by JopalBusinessCenter
+                    <p>Theme was reproduced from <a
+                    href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
+
+            </footer>
+
+            <footer class="footer text-center bg-dark text-white py-3 w-100 position-absolute bottom-0 d-sm-none d-lg-block"> 2024 © Task manager brought to you by JopalBusinessCenter
                     <p>Theme was reproduced from <a
                     href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
 

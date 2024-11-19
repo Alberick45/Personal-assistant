@@ -86,13 +86,8 @@ if (isset($_SESSION['user_id'])) {
     <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
 <![endif]-->
 
-<!-- <link href="plugins/css/chat_widget.css" rel="stylesheet"> -->
-
-<!-- <script>
-    window.userId = <?php /* echo json_encode($user_id); */ ?>;
-</script>
-<script src="plugins/js/chat_widget.js"></script>
- -->
+<link href="plugins/css/chat_widget.css" rel="stylesheet">
+<script src="plugins/js/chat_widget.js" defer></script>
 
 <style>
     
@@ -404,10 +399,6 @@ h2.bg-warning {
     }
 }
 
-a.dropdown-item{
-    color:gray;
-}
-
 /* Mobile Responsive Design */
 @media (max-width: 768px) {
     .card-container {
@@ -640,7 +631,7 @@ a.dropdown-item{
    
     
  <!-- Include the chat widget -->
-  <?php /* include('./plugins/actions/chat_widget.php'); */ ?> 
+ <?php include('./plugins/actions/chat_widget.php'); ?>
 </div>
 
 

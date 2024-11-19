@@ -1,0 +1,245 @@
+/* Root Theme Colors */
+:root {
+    --primary-color: #007bff; /* Blue */
+    --secondary-color: #6c757d; /* Gray */
+    --background-color: #f8f9fa; /* Light Background */
+    --accent-color: #28a745; /* Green */
+    --hover-color: #0056b3; /* Darker Blue */
+    --text-color: #343a40; /* Dark Gray */
+}
+
+/* General Reset and Basic Layout */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    overflow-x: hidden;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+@keyframes flash {
+    0%, 100% {
+        border: 2px solid transparent;
+    }
+    50% {
+        border: 2px solid var(--primary-color);
+    }
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 1rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    animation: slideIn 1s ease-out;
+}
+
+.navbar a {
+    color: white;
+    text-decoration: none;
+    margin: 0 1rem;
+    transition: color 0.3s;
+}
+
+.navbar a:hover {
+    color: var(--hover-color);
+}
+
+/* Buttons */
+.btn {
+    background-color: var(--accent-color);
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 5px;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, background-color 0.3s;
+}
+
+.btn:hover {
+    background-color: var(--hover-color);
+    transform: scale(1.05);
+}
+
+/* Cards */
+.card-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+    padding: 20px;
+}
+
+.card {
+    width: 300px;
+    background-color: #f9f9f9;
+    color: #333;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 10px 20px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s, box-shadow 0.3s;
+    opacity: 0;
+    animation: fadeIn 0.6s ease-in-out forwards;
+}
+
+.card:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.card-header {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 8px 10px;
+    border-radius: 10px 10px 0 0;
+    text-align: center;
+    font-size: 1.2em;
+}
+
+.card-body h3 {
+    font-size: 1.5em;
+    margin-bottom: 10px;
+}
+
+.card-body p {
+    font-size: 1em;
+    color: #555;
+    margin-bottom: 10px;
+}
+
+/* Input Fields */
+input, textarea {
+    width: 100%;
+    padding: 0.8rem;
+    margin: 1rem 0;
+    border: 1px solid var(--secondary-color);
+    border-radius: 5px;
+    transition: border 0.3s;
+}
+
+input:focus, textarea:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+/* Breadcrumb */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 0;
+    padding: 0;
+}
+
+.breadcrumb a {
+    color: var(--primary-color);
+    text-decoration: none;
+    padding: 10px;
+    transition: color 0.3s, transform 0.3s;
+}
+
+.breadcrumb a:hover {
+    color: var(--hover-color);
+    transform: scale(1.1);
+}
+
+/* Floating Guide */
+.floating-guide {
+    position: absolute;
+    top: 10%;
+    right: 10%;
+    width: 300px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 15px;
+    z-index: 1050;
+    display: none;
+}
+
+.arrow {
+    position: absolute;
+    top: 50%;
+    right: -10px;
+    border: 10px solid transparent;
+    border-left-color: rgba(255, 255, 255, 0.9);
+    transform: translateY(-50%);
+}
+
+.flash {
+    animation: flash 2s infinite;
+}
+
+/* Footer */
+.footer {
+    background-color: var(--secondary-color);
+    color: white;
+    text-align: center;
+    padding: 1rem;
+    margin-top: 2rem;
+    animation: fadeIn 1.5s;
+}
+
+/* Section Styles */
+.section {
+    padding: 2rem;
+    margin: 1rem 0;
+}
+
+.section h2 {
+    color: var(--primary-color);
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .card-container {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .floating-guide {
+        top: 5%;
+        right: 5%;
+        width: 250px;
+        padding: 10px;
+    }
+
+    .breadcrumb a {
+        font-size: 0.9em;
+        padding: 8px 15px;
+    }
+}

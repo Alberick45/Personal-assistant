@@ -1,42 +1,67 @@
 <?php
+    require_once("plugins/actions/config.php");
+    require_once("plugins/actions/functions.php");  
+    session_start();
 
-require_once("plugins/actions/config.php");
-require_once("plugins/actions/functions.php");  // Include the functions file
-session_start();
+    if (isset($_SESSION['user_id'])) {
 
-if (isset($_SESSION['user_id'])) {
-    $user_id = $_SESSION['user_id'];
+        $user_id = $_SESSION['user_id'];
 
-    // Get task-related counts and user data
-    $myday_no = getMyDayCount($user_id, $conn);
-    $user_data = getUserData($user_id, $conn);
-    $important_no = getImportantTaskCount($user_id, $conn);
-    $tasks_no = getTotalTaskCount($user_id, $conn);
+        // Get data
+        $myday_no = getMyDayCount($user_id, $conn);
+        $only_income = getTransactionSum($user_id, 'income', $conn);
+        $positive_cashflow = getCashflow($user_id, 'asset', $conn);
+        $negative_cashflow = getCashflow($user_id, 'liability', $conn);
 
-    // Extract user data values
-    $username = $user_data['username'];
-    $profile_pic = $user_data['profile_pic'];
-    // Get data
-    $only_income = getTransactionSum($user_id, 'income', $conn);
-    $positive_cashflow = getCashflow($user_id, 'asset', $conn);
-    $negative_cashflow = getCashflow($user_id, 'liability', $conn);
+        // Calculate total values
+        $passive_income = $positive_cashflow - $negative_cashflow;
+        $total_income = $passive_income + $only_income;
 
-    // Fetch total expense and total for selected categories
-    $only_expense = getTransactionSum($user_id, 'expense', $conn);
-    $total_expense = $only_expense + $positive_cashflow + $negative_cashflow;
+        // Fetch total expense and total for selected categories
+        $only_expense = getTransactionSum($user_id, 'expense', $conn);
+        $total_expense = $only_expense + $positive_cashflow + $negative_cashflow;
 
-    // Calculate total values
-    $passive_income = $positive_cashflow - $negative_cashflow;
-    $total_income = $passive_income + $only_income;
+        // Calculate balance
+        $balance = $total_income - $total_expense;
+        updateUserBalance($user_id, $balance, $conn);
 
-    $cash = $user_data['balance'];
-    // Calculate balance
-    $balance = $total_income - $total_expense;
-    updateUserBalance($user_id, $balance, $conn);
+        // Fetch user details
+        $user_data = getUserData($user_id, $conn);
+        if ($user_data) {
+            $username = $user_data['username'];
+            $profile_pic = !empty($user_data['profile_pic']) ? $user_data['profile_pic'] : 'default-pp.jpeg';
+            $cash = $user_data['balance'];
+            $goal = $user_data['financial_goal'];
+        }
 
-    // Display session message if exists
-    displaySessionMessage();
-}
+        
+
+
+        if (isset($_POST['action'])) {
+            if ($_POST['action'] === 'create') {
+                createContact($user_id, $_POST['name'], $_POST['phone'], $_POST['address'], $_POST['birthday']);
+            } elseif ($_POST['action'] === 'update') {
+                error_log("Updating contact ID: " . $_POST['id']);
+                error_log("Data: " . print_r($_POST, true));
+                $result = editContact($_POST['id'], $user_id, $_POST['name'], $_POST['phone'], $_POST['address'], $_POST['birthday']);
+                if (!$result) {
+                    error_log("Update failed.");
+                }
+               } elseif ($_POST['action'] === 'delete') {
+                deleteContact($_POST['id'], $user_id);
+            }
+            // Redirect to avoid form resubmission issues
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit();
+
+        }
+
+
+        $contacts = getContacts($user_id);
+
+        // Display session messages
+        displaySessionMessage();
+    }
 ?>
 
 <!DOCTYPE html>
@@ -44,12 +69,14 @@ if (isset($_SESSION['user_id'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tasks Manager</title>
+    <title>Finance Manager</title>
     <link rel="canonical" href="https://www.wrappixel.com/templates/ample-admin-lite/" />
     <!-- Favicon icon -->
     <link rel="icon" type="image/png" sizes="16x16" href="plugins/images/jop.png">
     <!-- Custom CSS -->
    <link href="plugins/css/style.min.css" rel="stylesheet">
+   <link href="plugins/css/bootstrap.min.css" rel="stylesheet">
+   <link href="plugins/css/docs.css" rel="stylesheet">
     <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
     <!--[if lt IE 9]>
@@ -57,20 +84,71 @@ if (isset($_SESSION['user_id'])) {
     <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
 <![endif]-->
 
-<script src="plugins/js/reminders.js"></script>
-
 <style>
-  /* .navbar-toggler-icon {
-    background-color: black; /* Or any other color 
-  } */
+    /* Add a scale and shadow effect on hover */
+    .card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
 
-   /* General Styles */
-.page-breadcrumb.bg-secondary {
-    background-color: #6c757d; /* Dark gray background */
-    padding: 15px 0;
-}
+    .card:hover {
+        transform: scale(1.05); /* Slightly enlarge the card */
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); /* Add a more pronounced shadow */
+    }
 
-/* General Breadcrumb Styles */
+    .contact-card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 10px 0;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .action-btns {
+            display: flex;
+            justify-content: space-between;
+        }
+
+    .bg-warning{
+        background-color: #ffcc00 !important;
+    }
+        /* Floating Instruction Div */
+        .floating-guide {
+            position: absolute;
+            top: 10%;
+            right: 10%;
+            width: 300px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            z-index: 1050;
+            display: none;
+        }
+
+        /* Arrow pointing to the profile icon */
+        .arrow {
+            position: absolute;
+            top: 50%;
+            right: -10px;
+            border: 10px solid transparent;
+            border-left-color: rgba(255, 255, 255, 0.9);
+            transform: translateY(-50%);
+        }
+
+        /* Animation for flashing profile icon */
+        .flash {
+            animation: flash 1s infinite;
+        }
+
+        @keyframes flash {
+            0%, 100% {
+                border: 2px solid transparent;
+            }
+            50% {
+                border: 2px solid #007bff;
+            }
+        }
+
+    /* General Breadcrumb Styles */
 .breadcrumb {
     display: flex;
     align-items: center;
@@ -120,14 +198,6 @@ if (isset($_SESSION['user_id'])) {
         width: 40px;
     }
 }
-
-
-.page-breadcrumb .breadcrumb {
-    color: white;
-    margin-bottom: 0;
-}
-
-
 /* Root Theme Colors */
 :root {
     --primary-color: #007bff; /* Blue */
@@ -259,6 +329,10 @@ input:focus, textarea:focus {
     border-color: var(--primary-color);
     outline: none;
 }
+.container {
+    padding-bottom: 100px; /* Ensures last-row elements are not cut off */
+}
+
 
 /* Media Queries for Responsiveness */
 @media (max-width: 768px) {
@@ -271,80 +345,21 @@ input:focus, textarea:focus {
     }
 }
 
-/* List Styling */
-ul.list-unstyled {
-    list-style-type: none;
-    padding: 0;
-    margin: 0;
+
+.fixed-bottom-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
 }
 
-hr.divider {
-    border: 1px solid white;
-    margin: 10px 0;
-}
 
-li a {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    text-decoration: none;
-    color: white;
-    transition: background-color 0.3s ease;
-    padding: 15px;
-    border-radius: 5px;
-}
 
-li a:hover {
-    background-color: #007bff;
-}
+    </style>
 
-li a .disabled-link {
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
-li.disabled {
-    color: gray;
-}
-
-/* Disable the 'locked' icon styling */
-.disabled-link img {
-    opacity: 0.5;
-}
-
-/* Disabled State Styles */
-li.disabled a {
-    pointer-events: none;
-    color: #6c757d; /* Grey out disabled items */
-}
-
-li.disabled a span {
-    opacity: 0.5; /* Dim the icons for disabled links */
-}
-
-a.dropdown-item{
-    color:gray;
-}
-
-/* Icons and Text Styling */
-li a span img {
-    margin-right: 10px;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .page-breadcrumb {
-        padding: 10px 0;
-    }
-    .breadcrumb {
-        text-align: center;
-    }
-}
-
-</style>
 </head>
 
-<body class="bg-dark">
+<body class="">
     <!-- ============================================================== -->
     <!-- Preloader - style you can find in spinners.css -->
     <!-- ============================================================== -->
@@ -377,7 +392,7 @@ li a span img {
                 <!-- ============================================================== -->
                 <!-- End Logo -->
                 <!-- ============================================================== -->
-                <div class="navbar-collapse collapse" id="navbarSupportedContent" >
+                <div class="navbar-collapse collapse justify-content-end" id="navbarSupportedContent" >
                    
                     <!-- ============================================================== -->
                     <!-- Right side toggle and nav items -->
@@ -407,27 +422,27 @@ li a span img {
                             </a>
 
                             <ul class="dropdown-menu dropdown-menu-end">
-                              <?php if(isset($user_id)) {?>
-                              <div id="left" class="d-flex justify-content-center">
-                                    <a class="btn profile-pic-enlarged" href="#">
-                                  <img src="plugins/images/users/<?php echo $profile_pic?>" alt="user-img" width="60" height="60"
-                                  class="img-circle"><span class="text-bg-white font-medium  d-flex justify-content-center"><?php echo $username ?>
-                                   (<?php echo $cash ?> GH₵)</span></a>
-                              </div>
-                              <hr>
-                              <div id="right" class="d-flex justify-content-center">
-                                  <li><a class="dropdown-item" href="profile.php">Profile</a></li>|
-                                  <li><a data-bs-toggle="modal" data-bs-target="#logout-modal" role="button" class="dropdown-item"  >Logout</a></li>
-                                  <?php } else{?>
-                                  <li><a data-bs-toggle="modal" data-bs-target="#signup-modal" role="button" class="dropdown-item" href="#">Signup</a></li>
-                                  <li><a data-bs-toggle="modal" data-bs-target="#login-modal" role="button" class="dropdown-item" href="#">Login</a></li>
-                                  
-                              </div>
-                            
-                           <?php } ?>
+                                    <?php if(isset($user_id)) {?>
+                                    <div id="left" class="d-flex justify-content-center">
+                                            <a class="btn profile-pic-enlarged" href="#">
+                                        <img src="plugins/images/users/<?php echo $profile_pic?>" alt="user-img" width="60" height="60"
+                                        class="img-circle"><span class="text-bg-white font-medium  d-flex justify-content-center"><?php echo $username ?>
+                                        (<?php echo $cash ?> GH₵)</span></a>
+                                    </div>
+                                    <hr>
+                                    <div id="right" class="d-flex justify-content-center">
+                                        <li><a class="dropdown-item" href="profile.php">Profile</a></li>|
+                                        <li><a data-bs-toggle="modal" data-bs-target="#logout-modal" role="button" class="dropdown-item"  >Logout</a></li>
+                                        <?php } else{?>
+                                        <li><a data-bs-toggle="modal" data-bs-target="#signup-modal" role="button" class="dropdown-item" href="#">Signup</a></li>
+                                        <li><a data-bs-toggle="modal" data-bs-target="#login-modal" role="button" class="dropdown-item" href="#">Login</a></li>
+                                        
+                                    </div>
+                                    
+                                    <?php } ?>
                             </ul>
                             </div>
-                            </li>
+                        </li>
                         <!-- ============================================================== -->
                         <!-- User profile and search -->
                         <!-- ============================================================== -->
@@ -436,102 +451,172 @@ li a span img {
             </nav>
         </header>
 
-        
-        <div class="page-breadcrumb" style="background-color: brown;">
-    <div class="row align-items-center">
-        <div class="col-12 d-flex justify-content-end">
-            <div class="d-md-flex">
+        <div class="page-breadcrumb" style="background-color:brown">
+            <div class="row align-items-center">
+                <div class="col-lg-12 col-sm-12 col-md-12 col-xs-12 d-flex justify-content-end">
+                
+                <div class="d-md-flex">
                 <!-- Adjust the breadcrumb to push it further to the right -->
                 <ol class="breadcrumb mb-0 ms-auto">
-                    <li>
-                        <span>
-                            <a href="index.php">
-                                <img height="50" width="50" src="plugins/images/exit.jpg" alt="Go to home page">
-                            </a>
-                        </span>
-                    </li>
+                    <li><span><a href="index.php"><img height="50" width="50" src="plugins/images/exit.jpg" alt="Go to home page"></a></span></li>
                 </ol>
+                </div>
+                
+                </div>
             </div>
+        </div>
+
+
+
+<div class="container py-4">
+    <h1 class="text-center mb-4 text-dark" style="background-color:goldenrod">Address Book</h1>
+
+    <!-- List Contacts -->
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    <?php foreach ($contacts as $contact) { ?>
+        <div class="col">
+            <div class="card h-100 shadow">
+                <div class="card-body">
+                    <h5 class="card-title"><?php echo htmlspecialchars($contact['Contact_name']); ?></h5>
+                    <p class="card-text"><strong>Phone:</strong> <?php echo htmlspecialchars($contact['Contact_phone']); ?></p>
+                    <p class="card-text"><strong>Birthday:</strong> <?php echo htmlspecialchars($contact['Birthday']); ?></p>
+                    <p class="card-text"><strong>Address:</strong> <?php echo htmlspecialchars($contact['Address']); ?></p>
+                </div>
+                <div class="card-footer d-flex justify-content-between">
+                    <!-- Edit Contact -->
+                    <button 
+                        class="btn btn-warning btn-sm edit-contact-btn" 
+                        data-id="<?= $contact['Contact_id']; ?>"
+                        data-name="<?= htmlspecialchars($contact['Contact_name']); ?>" 
+                        data-phone="<?= htmlspecialchars($contact['Contact_phone']); ?>" 
+                        data-birthday="<?= htmlspecialchars($contact['Birthday']); ?>" 
+                        data-address="<?= htmlspecialchars($contact['Address']); ?>" 
+                        data-bs-toggle="modal" 
+                        data-bs-target="#editContactModal">
+                        Edit
+                    </button>
+
+                    <!-- Delete Contact -->
+                    <form method="POST">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="id" value="<?php echo $contact['Contact_id']; ?>">
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    <?php } ?>
+</div>
+
+
+    <!-- Trigger Button for Create Contact -->
+<div class="fixed-bottom-button text-end p-4">
+    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#createContactModal">
+        <span><img height="50" width="50" src="plugins/images/addcontact.jpeg" alt="Add New Contact"></span>
+    </button>
+</div>
+
+</div>
+
+<!-- Create Contact Modal -->
+<div class="modal fade" id="createContactModal" tabindex="-1" role="dialog" aria-labelledby="createContactModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createContactModalLabel">Create New Contact</h5>
+                <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form method="POST">
+                <input type="hidden" name="action" value="create">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="createName">Name</label>
+                        <input type="text" class="form-control" id="createName" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="createPhone">Phone</label>
+                        <input type="text" class="form-control" id="createPhone" name="phone" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="createBirthday">Birthday</label>
+                        <input type="date" class="form-control" id="createBirthday" name="birthday">
+                    </div>
+                    <div class="form-group">
+                        <label for="createAddress">Address</label>
+                        <textarea class="form-control" id="createAddress" name="address" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Add Contact</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
-<!-- The audio element that will play the ping sound -->
-<audio id="notificationSound" src="plugins/sounds/ping.mp3" preload="auto"></audio>
+<!-- Edit Contact Modal -->
+<div class="modal fade" id="editContactModal" tabindex="-1" role="dialog" aria-labelledby="editContactModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editContactModalLabel">Edit Contact</h5>
+                <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form method="POST">
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" id="editContactId" name="id">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="editContactName">Name</label>
+                        <input type="text" class="form-control" id="editContactName" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editContactPhone">Phone</label>
+                        <input type="text" class="form-control" id="editContactPhone" name="phone" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editContactBirthday">Birthday</label>
+                        <input type="date" class="form-control" id="editContactBirthday" name="birthday">
+                    </div>
+                    <div class="form-group">
+                        <label for="editContactAddress">Address</label>
+                        <textarea class="form-control" id="editContactAddress" name="address" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
-<div id="reminder-message"></div>
 
 
 
-<ul class="list-unstyled">
-    <?php if (isset($_SESSION['user_id'])) { ?>
-        <hr class="divider">
-        <li>
-            <a href="myday.php" class="text-light p-3 mt-3">
-                <span>
-                    <img height="20" width="20" src="plugins/images/myday.png" alt="My day">
-                </span> My Day <span><?php echo $myday_no; ?></span>
-            </a>
-        </li>
-        <hr class="divider">
-        <li>
-            <a href="important.php" class="text-light p-3 mt-3">
-                <span>
-                    <img height="20" width="20" src="plugins/images/starred.png" alt="important">
-                </span> Important <span><?php echo $important_no; ?></span>
-            </a>
-        </li>
-        <hr class="divider">
-        <li>
-            <a href="tasks.php" class="text-light p-3 mt-3">
-                <span>
-                    <img height="20" width="20" src="plugins/images/tasks.png" alt="tasks">
-                </span> Tasks <span><?php echo $tasks_no; ?></span>
-            </a>
-        </li>
-        <hr class="divider">
-    <?php } else { ?>
-        <hr class="divider">
-        <h4 class="text-warning">Please login to continue</h4>
-        <li class="disabled">
-            <a href="#" class="text-light p-3 mt-3 disabled-link">
-                <span>
-                    <img height="20" width="20" src="plugins/images/myday.png" alt="My day">
-                </span> My Day <span><?php echo $myday_no; ?></span>
-            </a>
-            <span>
-                <img height="20" width="20" src="plugins/images/locked.png">
-            </span>
-        </li>
-        <hr class="divider">
-        <li class="disabled">
-            <a href="#" class="text-light p-3 mt-3 disabled-link">
-                <span>
-                    <img height="20" width="20" src="plugins/images/starred.png" alt="important">
-                </span> Important <span><?php echo $important_no; ?></span>
-            </a>
-            <span>
-                <img height="20" width="20" src="plugins/images/locked.png">
-            </span>
-        </li>
-        <hr class="divider">
-        <li class="disabled">
-            <a href="#" class="text-light p-3 mt-3 disabled-link">
-                <span>
-                    <img height="20" width="20" src="plugins/images/tasks.png" alt="tasks">
-                </span> Tasks <span><?php echo $tasks_no; ?></span>
-            </a>
-            <span>
-                <img height="20" width="20" src="plugins/images/locked.png">
-            </span>
-        </li>
-        <hr class="divider">
-    <?php } ?>
-</ul>
+<script>
+    // Populate Edit Modal with Data
+    document.querySelectorAll('.edit-contact-btn').forEach(button => {
+        button.addEventListener('click', function () {
+            document.getElementById('editContactId').value = this.getAttribute('data-id');
+            document.getElementById('editContactName').value = this.getAttribute('data-name');
+            document.getElementById('editContactPhone').value = this.getAttribute('data-phone');
+            document.getElementById('editContactBirthday').value = this.getAttribute('data-birthday');
+            document.getElementById('editContactAddress').value = this.getAttribute('data-address');
+        });
+    });
+</script>
 
-        <?php if(isset($user_id)) {?>
-          <!-- this is the logout modal -->
-          <div class="modal fade" id="logout-modal" tabindex="-1" aria-labelledby="logout-modal-title" aria-hidden="true">
+
+
+ <!-- this is the logout modal -->
+ <div class="modal fade" id="logout-modal" tabindex="-1" aria-labelledby="logout-modal-title" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
               <div class="modal-content">
                 <div class="modal-header">
@@ -550,12 +635,12 @@ li a span img {
               </div>
             </div>
           </div>
+        </div>
 
-        <?php } else{?>
 
-          <!-- this is the Signup modal -->
+<!-- this is the Signup modal -->
          
-          <div class="modal fade" id="signup-modal" tabindex="-1" aria-labelledby="signup-modal-title" aria-hidden="true">
+<div class="modal fade" id="signup-modal" tabindex="-1" aria-labelledby="signup-modal-title" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
               <div class="modal-content">
                 <div class="modal-header">
@@ -621,7 +706,6 @@ li a span img {
                         
                         </div>
                 <div class="modal-footer">
-                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                   
                   <button class="w-100 btn btn-primary btn-lg"  name="sign_up">signup</button>
                 </div> 
@@ -633,14 +717,14 @@ li a span img {
           <!-- this is the login modal -->
          
           <div class="modal fade" id="login-modal" tabindex="-1" aria-labelledby="login-modal-title" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-dialog modal-dialog-centered " style="width: 560vh;">
               <div class="modal-content">
                 <div class="modal-header">
                   <h5 class="modal-title" id="login-modal-title">Login</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                <div id="login" class="" style="width: 560px;">
+                <div id="login" class="" style="width: 60vh;">
                     <h2 class="text-center">Login Form</h2>
                     
                 
@@ -673,7 +757,6 @@ li a span img {
               </div>
                 </div>
                 <div class="modal-footer">
-                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                   
                   <button class="w-100 btn btn-primary btn-lg"  name="login">login</button>
             </div> 
@@ -684,33 +767,14 @@ li a span img {
             </div>
           </div>
         </div>
-
-        <?php } ?>
-
-         <!-- footer -->
-            <!-- ============================================================== -->
-            <footer class="footer text-center bg-dark text-white py-3 w-100 position-absolute bottom-0 "> 2024 © Task manager brought to you by JopalBusinessCenter
-                    <p>Theme was reproduced from <a
-                    href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
-
-            </footer>
-            <!-- ============================================================== -->
-            <!-- End footer -->
-            <!-- ============================================================== -->
+    
 </body>
-
-
-
-
 <script src="plugins/bower_components/jquery/dist/jquery.min.js"></script>
     <!-- Bootstrap tether Core JavaScript -->
-    <script src="plugins/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="plugins/js/bootstrap.bundle.min.js"></script>
     <script src="plugins/js/app-style-switcher.js"></script>
     <!--Wave Effects -->
     <script src="plugins/js/waves.js"></script>
-
-    
-<script src="plugins/js/repeat_tasks.js"></script>
     <!--Menu sidebar -->
     <script src="plugins/js/sidebarmenu.js"></script>
     <!--Custom JavaScript -->

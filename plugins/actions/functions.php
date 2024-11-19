@@ -283,9 +283,6 @@ function getTasksByStatus($status, $user_id, $conn) {
     return $stmt->get_result();
 }
 
-
-$resultsmyday_tasks = getTasksByStatusAndDate($user_id, 'PENDING', $conn);
-
 function getTasksByStatusAndDate($user_id, $status, $conn) {
     $query = "SELECT * FROM tasks WHERE task_status = ? AND DATE(deadline) = CURDATE() AND (task_assigner = ? OR task_assignee = ?)";
     $stmt = $conn->prepare($query);
@@ -434,7 +431,7 @@ function importTasksFromCSV($conn, $task_file, $user_id) {
 }
 
 
-function importTimetableFromCSV($conn, $timetable_file, $user_id) {
+/* function importTimetableFromCSV($conn, $timetable_file, $user_id) {
     // Check if the file was uploaded without errors
     if ($timetable_file['error'] === 0) {
         $timetable_file_path = $timetable_file['tmp_name'];
@@ -495,7 +492,93 @@ function importTimetableFromCSV($conn, $timetable_file, $user_id) {
     } else {
         return "Error uploading the file.";
     }
+} */
+
+function importTimetableFromCSV($conn, $timetable_file, $user_id) {
+    // Check if the file was uploaded without errors
+    if ($timetable_file['error'] === 0) {
+        $timetable_file_path = $timetable_file['tmp_name'];
+
+        // Validate file type (only allow CSV)
+        $file_ext = strtolower(pathinfo($timetable_file['name'], PATHINFO_EXTENSION));
+        if ($file_ext !== 'csv') {
+            return "Invalid file type. Please upload a CSV file.";
+        }
+
+        // Open the CSV file for reading
+        if (($handle = fopen($timetable_file_path, "r")) !== FALSE) {
+            // Read the first row to get the time range headers
+            $time_headers = fgetcsv($handle, 1000, ",");
+
+            // Ensure the first cell of the time headers is empty (top-left corner)
+            if (trim($time_headers[0]) !== "") {
+                return "Invalid CSV format. The top-left cell must be empty.";
+            }
+
+            // Loop through the remaining rows to process days and tasks
+            while (($row = fgetcsv($handle, 1000, ",")) !== FALSE) {
+                // The first cell in each row is the day
+                $day = $conn->real_escape_string($row[0]);
+
+                // Iterate through the rest of the row for time-task pairs
+                for ($i = 1; $i < count($row); $i++) {
+                    $task_details = trim($row[$i]);
+
+                    // Skip empty cells
+                    if (empty($task_details)) {
+                        continue;
+                    }
+
+                    // Process the time range from the header
+                    $time_range = $time_headers[$i];
+                    $time_parts = explode('-', $time_range);
+
+                    if (count($time_parts) !== 2) {
+                        return "Invalid time range format in column $i. Expected format: 'HH:MM-HH:MM'.";
+                    }
+
+                    // Parse start and end times
+                    $start_time = date('H:i:s', strtotime(trim($time_parts[0])));
+                    $end_time = date('H:i:s', strtotime(trim($time_parts[1])));
+
+                    // Combine day and start time to create a datetime for the task
+                    $date_time_start = date('Y-m-d H:i:s', strtotime("$day $start_time"));
+                    $date_time_end = date('Y-m-d H:i:s', strtotime("$day $end_time"));
+
+                    // Calculate task duration in seconds
+                    $start_datetime = strtotime("$day $start_time");
+                    $end_datetime = strtotime("$day $end_time");
+                    $duration_seconds = $end_datetime - $start_datetime;
+
+                    // Prepare task details
+                    $taskname = "Task on $day ($time_range)";
+                    $description = $conn->real_escape_string($task_details);
+
+                    // Insert data into the tasks table
+                    $query = "
+                        INSERT INTO tasks (task_name, deadline, task_duration, task_description, task_assigner, task_status)
+                        VALUES ('$taskname', '$date_time_start', '$duration_seconds', '$description', '$user_id', 'PENDING')
+                    ";
+
+                    // Execute the query and check for errors
+                    if (!$conn->query($query)) {
+                        return "Error: " . $conn->error;
+                    }
+                }
+            }
+
+            // Close the file
+            fclose($handle);
+
+            return "Timetable with time ranges and task durations successfully imported!";
+        } else {
+            return "Error opening the file.";
+        }
+    } else {
+        return "Error uploading the file.";
+    }
 }
+
 
 
 
@@ -505,5 +588,58 @@ function displaySessionMessage() {
         echo $_SESSION['message'];
         unset($_SESSION['message']);
     }
+}
+
+// contacts
+function createContact($user_id, $contact_name, $contact_phone, $address, $birthday = null) {
+    global $conn;
+
+    $sql = "INSERT INTO contacts (Contact_name, Contact_phone, Address, Birthday, user_id) 
+            VALUES (?, ?, ?, ?, ?)";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ssssi", $contact_name, $contact_phone, $address, $birthday, $user_id);
+
+    return $stmt->execute();
+}
+
+function editContact($contact_id, $user_id, $contact_name, $contact_phone, $address, $birthday = null) {
+    global $conn;
+
+    $sql = "UPDATE contacts 
+            SET Contact_name = ?, Contact_phone = ?, Address = ?, Birthday = ?
+            WHERE Contact_id = ? AND user_id = ?";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ssssii", $contact_name, $contact_phone, $address, $birthday, $contact_id, $user_id);
+
+    return $stmt->execute();
+}
+
+function deleteContact($contact_id, $user_id) {
+    global $conn;
+
+    $sql = "DELETE FROM contacts WHERE Contact_id = ? AND user_id = ?";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ii", $contact_id, $user_id);
+
+    return $stmt->execute();
+}
+
+function getContacts($user_id) {
+    global $conn;
+
+    $sql = "SELECT * FROM contacts WHERE user_id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        return $result->fetch_all(MYSQLI_ASSOC);
+    }
+
+    return null; // No contacts found
 }
 ?>

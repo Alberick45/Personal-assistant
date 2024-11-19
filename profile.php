@@ -1475,7 +1475,13 @@ if ($results -> num_rows > 0){
     <!-- ============================================================== -->
             <!-- footer -->
             <!-- ============================================================== -->
-            <footer class="footer text-center"> 2024 © Task amnager brought to you by JopalBusinessCenter
+            <footer class="footer text-center bg-dark text-white py-3 w-100 position-relative bottom-0 d-sm-block d-lg-none"> 2024 © Task manager brought to you by JopalBusinessCenter
+                    <p>Theme was reproduced from <a
+                    href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
+
+            </footer>
+
+            <footer class="footer text-center bg-dark text-white py-3 w-100 position-absolute bottom-0 d-sm-none d-lg-block"> 2024 © Task manager brought to you by JopalBusinessCenter
                     <p>Theme was reproduced from <a
                     href="https://www.wrappixel.com/">wrappixel.com</a> with permission from the author.</p>
 
