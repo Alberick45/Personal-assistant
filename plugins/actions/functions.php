@@ -150,7 +150,7 @@ function addTransaction($user_id, $category_id, $amount, $time, $note, $conn) {
 }
 
 function updateBudgetRemaining($category_id, $amount, $note, $conn) {
-    $query = "UPDATE budget SET budget_amount_remaining = (budget_amount - ?), note = ? 
+    $query = "UPDATE budget SET budget_amount_remaining = (budget_amount_remaining - ?), note = ? 
               WHERE category_id = ?";
     $stmt = $conn->prepare($query);
     $stmt->bind_param("dsi", $amount, $note, $category_id);
